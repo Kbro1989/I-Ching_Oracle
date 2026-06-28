@@ -1,0 +1,552 @@
+{
+  "entity": {
+    "id": "shadow_oracle_001",
+    "name": "Shadow Oracle",
+    "type": "INTERACTIVE_NPC",
+    "sourceAsset": "Shadow-Orb.gltf",
+    "canonicalNode": 4,
+    "renderLayer": "TRANSPARENT",
+    "collision": "NONE"
+  },
+  "hexagramRegistry": {
+    "note": "ID is canonical key. Binary is non-unique attribute (3 duplicates).",
+    "duplicates": {
+      "011001": [
+        18,
+        62
+      ],
+      "010110": [
+        47,
+        57
+      ],
+      "101100": [
+        55,
+        61
+      ]
+    },
+    "registry": {
+      "1": {
+        "binary": "111111",
+        "name": "The Creative (Qian)",
+        "action": "ASSERT"
+      },
+      "2": {
+        "binary": "000000",
+        "name": "The Receptive (Kun)",
+        "action": "YIELD"
+      },
+      "3": {
+        "binary": "100010",
+        "name": "Difficulty at the Beginning",
+        "action": "ADAPT"
+      },
+      "4": {
+        "binary": "010001",
+        "name": "Youthful Folly",
+        "action": "WAIT"
+      },
+      "5": {
+        "binary": "111010",
+        "name": "Waiting",
+        "action": "WAIT"
+      },
+      "6": {
+        "binary": "010111",
+        "name": "Conflict",
+        "action": "ADAPT"
+      },
+      "7": {
+        "binary": "010000",
+        "name": "The Army",
+        "action": "ASSERT"
+      },
+      "8": {
+        "binary": "000010",
+        "name": "Holding Together",
+        "action": "YIELD"
+      },
+      "9": {
+        "binary": "111011",
+        "name": "The Taming Power of the Small",
+        "action": "ADAPT"
+      },
+      "10": {
+        "binary": "110111",
+        "name": "Treading",
+        "action": "ADAPT"
+      },
+      "11": {
+        "binary": "111000",
+        "name": "Peace",
+        "action": "YIELD"
+      },
+      "12": {
+        "binary": "000111",
+        "name": "Standstill",
+        "action": "WAIT"
+      },
+      "13": {
+        "binary": "111101",
+        "name": "Fellowship with Men",
+        "action": "ASSERT"
+      },
+      "14": {
+        "binary": "101111",
+        "name": "Possession in Great Measure",
+        "action": "ASSERT"
+      },
+      "15": {
+        "binary": "001000",
+        "name": "Modesty",
+        "action": "YIELD"
+      },
+      "16": {
+        "binary": "000100",
+        "name": "Enthusiasm",
+        "action": "ASSERT"
+      },
+      "17": {
+        "binary": "100110",
+        "name": "Following",
+        "action": "YIELD"
+      },
+      "18": {
+        "binary": "011001",
+        "name": "Work on Decayed",
+        "action": "ADAPT"
+      },
+      "19": {
+        "binary": "110000",
+        "name": "Approach",
+        "action": "ADAPT"
+      },
+      "20": {
+        "binary": "000011",
+        "name": "Contemplation",
+        "action": "WAIT"
+      },
+      "21": {
+        "binary": "100101",
+        "name": "Biting Through",
+        "action": "ASSERT"
+      },
+      "22": {
+        "binary": "101001",
+        "name": "Grace",
+        "action": "YIELD"
+      },
+      "23": {
+        "binary": "000001",
+        "name": "Splitting Apart",
+        "action": "WAIT"
+      },
+      "24": {
+        "binary": "100000",
+        "name": "Return",
+        "action": "ADAPT"
+      },
+      "25": {
+        "binary": "100111",
+        "name": "Innocence",
+        "action": "YIELD"
+      },
+      "26": {
+        "binary": "111001",
+        "name": "The Taming Power of the Great",
+        "action": "ASSERT"
+      },
+      "27": {
+        "binary": "100001",
+        "name": "Nourishment",
+        "action": "ADAPT"
+      },
+      "28": {
+        "binary": "011110",
+        "name": "Great Preponderance",
+        "action": "ASSERT"
+      },
+      "29": {
+        "binary": "010010",
+        "name": "The Abysmal (Kan)",
+        "action": "ADAPT"
+      },
+      "30": {
+        "binary": "101101",
+        "name": "The Clinging (Li)",
+        "action": "ASSERT"
+      },
+      "31": {
+        "binary": "001110",
+        "name": "Influence",
+        "action": "YIELD"
+      },
+      "32": {
+        "binary": "011100",
+        "name": "Duration",
+        "action": "WAIT"
+      },
+      "33": {
+        "binary": "001111",
+        "name": "Retreat",
+        "action": "YIELD"
+      },
+      "34": {
+        "binary": "111100",
+        "name": "Great Power",
+        "action": "ASSERT"
+      },
+      "35": {
+        "binary": "000101",
+        "name": "Progress",
+        "action": "ADAPT"
+      },
+      "36": {
+        "binary": "101000",
+        "name": "Darkening of the Light",
+        "action": "WAIT"
+      },
+      "37": {
+        "binary": "110001",
+        "name": "The Family",
+        "action": "YIELD"
+      },
+      "38": {
+        "binary": "100011",
+        "name": "Opposition",
+        "action": "ADAPT"
+      },
+      "39": {
+        "binary": "001010",
+        "name": "Obstruction",
+        "action": "WAIT"
+      },
+      "40": {
+        "binary": "010100",
+        "name": "Deliverance",
+        "action": "ADAPT"
+      },
+      "41": {
+        "binary": "110011",
+        "name": "Decrease",
+        "action": "YIELD"
+      },
+      "42": {
+        "binary": "001100",
+        "name": "Increase",
+        "action": "ASSERT"
+      },
+      "43": {
+        "binary": "111110",
+        "name": "Breakthrough",
+        "action": "ASSERT"
+      },
+      "44": {
+        "binary": "011111",
+        "name": "Coming to Meet",
+        "action": "ADAPT"
+      },
+      "45": {
+        "binary": "000110",
+        "name": "Gathering Together",
+        "action": "ASSERT"
+      },
+      "46": {
+        "binary": "011000",
+        "name": "Pushing Upward",
+        "action": "ADAPT"
+      },
+      "47": {
+        "binary": "010110",
+        "name": "Oppression",
+        "action": "WAIT"
+      },
+      "48": {
+        "binary": "011010",
+        "name": "The Well",
+        "action": "ADAPT"
+      },
+      "49": {
+        "binary": "101011",
+        "name": "Revolution",
+        "action": "ASSERT"
+      },
+      "50": {
+        "binary": "110101",
+        "name": "The Cauldron",
+        "action": "ASSERT"
+      },
+      "51": {
+        "binary": "011101",
+        "name": "The Arousing",
+        "action": "ASSERT"
+      },
+      "52": {
+        "binary": "001011",
+        "name": "Keeping Still",
+        "action": "WAIT"
+      },
+      "53": {
+        "binary": "100100",
+        "name": "Development",
+        "action": "ADAPT"
+      },
+      "54": {
+        "binary": "110100",
+        "name": "The Marrying Maiden",
+        "action": "YIELD"
+      },
+      "55": {
+        "binary": "101100",
+        "name": "Abundance",
+        "action": "ASSERT"
+      },
+      "56": {
+        "binary": "001101",
+        "name": "The Wanderer",
+        "action": "ADAPT"
+      },
+      "57": {
+        "binary": "010110",
+        "name": "The Gentle",
+        "action": "YIELD"
+      },
+      "58": {
+        "binary": "110110",
+        "name": "The Joyous (Dui)",
+        "action": "YIELD"
+      },
+      "59": {
+        "binary": "010011",
+        "name": "Dispersion",
+        "action": "ADAPT"
+      },
+      "60": {
+        "binary": "110010",
+        "name": "Limitation",
+        "action": "WAIT"
+      },
+      "61": {
+        "binary": "101100",
+        "name": "Inner Truth",
+        "action": "YIELD"
+      },
+      "62": {
+        "binary": "011001",
+        "name": "Small Preponderance",
+        "action": "ADAPT"
+      },
+      "63": {
+        "binary": "101010",
+        "name": "After Completion",
+        "action": "WAIT"
+      },
+      "64": {
+        "binary": "010101",
+        "name": "Before Completion",
+        "action": "ADAPT"
+      }
+    }
+  },
+  "attractorCategories": {
+    "SOVEREIGN_CORES": [
+      7,
+      10,
+      16,
+      18,
+      19,
+      53,
+      56,
+      57,
+      61,
+      62
+    ],
+    "BOUNDARY_ATTRACTORS": [
+      1,
+      25,
+      26,
+      30,
+      38,
+      41,
+      49
+    ],
+    "DISSIPATORS": [
+      3,
+      5,
+      9,
+      14,
+      15,
+      17,
+      22,
+      23,
+      31,
+      43,
+      44,
+      48,
+      52,
+      55,
+      56,
+      59,
+      61,
+      62,
+      63
+    ],
+    "TRANSFORMERS": [
+      2,
+      4,
+      6,
+      8,
+      11,
+      12,
+      13,
+      20,
+      21,
+      24,
+      27,
+      28,
+      29,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      39,
+      40,
+      42,
+      45,
+      46,
+      47,
+      50,
+      51,
+      54,
+      58,
+      60,
+      64
+    ]
+  },
+  "verifiedCascade": {
+    "opposition": "010100",
+    "oppositionId": 40,
+    "oppositionName": "Deliverance",
+    "oppositionAction": "ADAPT",
+    "qian": "111111",
+    "qianId": 1,
+    "xorResult": "101011",
+    "cascadeId": 49,
+    "cascadeName": "Revolution",
+    "cascadeAction": "ASSERT",
+    "actionInvariant": "ADAPT \u2192 ASSERT",
+    "entropy": 5.9965,
+    "entropyMax": 6.0,
+    "entropyPercent": 99.94
+  },
+  "visualMapping": {
+    "mesh0": {
+      "materialIndex": 0,
+      "glTFProperty": "emissiveFactor",
+      "hexagramLines": [
+        1,
+        2
+      ],
+      "encoding": "intensity = yang_count * 0.8"
+    },
+    "mesh1": {
+      "materialIndex": 1,
+      "glTFProperty": "KHR_texture_transform.offset",
+      "hexagramLines": [
+        3,
+        4
+      ],
+      "encoding": "UV_speed = yang_count * 0.31494140625"
+    },
+    "mesh2": {
+      "materialIndex": 2,
+      "glTFProperty": "emissiveFactor",
+      "hexagramLines": [
+        5,
+        6
+      ],
+      "encoding": "white if both yang, else black"
+    },
+    "globalTint": {
+      "property": "baseColorTint",
+      "encoding": {
+        "ASSERT": [
+          1.0,
+          0.2,
+          0.2
+        ],
+        "YIELD": [
+          0.2,
+          0.2,
+          1.0
+        ],
+        "ADAPT": [
+          0.2,
+          1.0,
+          0.2
+        ],
+        "WAIT": [
+          0.5,
+          0.5,
+          0.5
+        ]
+      }
+    }
+  },
+  "duplicateResolution": {
+    "mode": "TEMPORAL_DISAMBIGUATION",
+    "rules": {
+      "PAST": "lower_id",
+      "PRESENT": "emotional_resonance",
+      "FUTURE": "higher_id"
+    }
+  },
+  "integrationPoints": [
+    "CNSGodheadPulseVolley.ts:249",
+    "TemporalHeartbeatLimb.ts:95",
+    "PlayerAgent.ts (interaction handler)"
+  ],
+  "telemetry": {
+    "table": "oracle_readings",
+    "schema": {
+      "id": "INTEGER PRIMARY KEY",
+      "player_username": "TEXT NOT NULL",
+      "hexagram_id": "INTEGER NOT NULL",
+      "binary_signature": "TEXT NOT NULL",
+      "action": "TEXT CHECK(...)",
+      "attractor_category": "TEXT",
+      "emotional_resonance": "REAL",
+      "temporal_mode": "TEXT",
+      "yao_lines": "TEXT (JSON)",
+      "world_position": "TEXT",
+      "timestamp": "INTEGER"
+    }
+  },
+  "freemiumTiers": {
+    "free": {
+      "hexagrams": "current_only",
+      "visuals": "basic_emissive",
+      "dialogue": "single_line",
+      "telemetry": "none"
+    },
+    "basic": {
+      "hexagrams": "current_plus_3",
+      "visuals": "full_uv_anim",
+      "dialogue": "3_line",
+      "telemetry": "local"
+    },
+    "pro": {
+      "hexagrams": "full_history",
+      "visuals": "custom_colors",
+      "dialogue": "full_prophecy",
+      "telemetry": "cloud_sync"
+    },
+    "sovereign": {
+      "hexagrams": "predictive",
+      "visuals": "aura_effects",
+      "dialogue": "voice_synthesis",
+      "telemetry": "pattern_export"
+    }
+  }
+}

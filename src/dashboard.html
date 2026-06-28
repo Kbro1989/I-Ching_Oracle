@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POG2 Sovereign Dashboard</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg-panel: #111118;
+    --bg-panel-hover: #1a1a24;
+    --border: #22222e;
+    --text: #c8c8d4;
+    --text-dim: #666677;
+    --text-bright: #e8e8f0;
+    --accent-gold: #d4a843;
+    --accent-amber: #c9842a;
+    --accent-teal: #2a9d8f;
+    --accent-void: #6b2d5c;
+    --accent-red: #c0392b;
+    --beat: 640ms;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-x: hidden;
+  }
+  .dashboard {
+    display: grid;
+    grid-template-columns: 320px 1fr 320px;
+    grid-template-rows: 40px 1fr 200px;
+    height: 100vh;
+    gap: 1px;
+    background: var(--border);
+  }
+  .panel {
+    background: var(--bg-panel);
+    padding: 12px;
+    overflow: auto;
+    position: relative;
+  }
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    color: var(--text-bright);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 10px;
+  }
+  .panel-header .badge {
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: var(--border);
+    color: var(--text-dim);
+  }
+
+  /* ── Top Bar ── */
+  .top-bar {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+  }
+  .top-bar .title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent-gold);
+    letter-spacing: 2px;
+  }
+  .top-bar .beat-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .beat-ring {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--accent-gold);
+    position: relative;
+  }
+  .beat-ring::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 1px solid var(--accent-gold);
+    opacity: 0;
+    animation: beat-pulse var(--beat) ease-in-out infinite;
+  }
+  @keyframes beat-pulse {
+    0%, 100% { transform: scale(1); opacity: 0; }
+    50% { transform: scale(1.3); opacity: 0.5; }
+  }
+  .beat-text { color: var(--text-dim); font-size: 11px; }
+  .tick-counter { color: var(--accent-gold); font-weight: 700; }
+  .connection-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-teal);
+    animation: status-blink 2s ease-in-out infinite;
+  }
+  .status-dot.disconnected { background: var(--accent-red); animation: none; }
+  @keyframes status-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Oracle Console (Left) ── */
+  .oracle-console {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .query-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .query-input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 10px 12px;
+    font-family: inherit;
+    font-size: 12px;
+    border-radius: 4px;
+    resize: none;
+    min-height: 60px;
+    outline: none;
+  }
+  .query-input:focus { border-color: var(--accent-gold); }
+  .query-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .temporal-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--bg);
+    border-radius: 4px;
+    padding: 2px;
+    border: 1px solid var(--border);
+  }
+  .temporal-btn {
+    padding: 4px 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .temporal-btn.active {
+    background: var(--accent-gold);
+    color: var(--bg);
+  }
+  .submit-btn {
+    flex: 1;
+    padding: 8px 16px;
+    border: none;
+    background: var(--accent-gold);
+    color: var(--bg);
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    position: relative;
+    overflow: hidden;
+  }
+  .submit-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+    opacity: 0;
+    animation: btn-pulse var(--beat) ease-in-out infinite;
+  }
+  @keyframes btn-pulse {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+  }
+  .submit-btn:hover { background: #e0b84d; }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .emotion-slider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .emotion-slider label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; }
+  .emotion-slider input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  .emotion-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    cursor: pointer;
+  }
+  .emotion-value { font-size: 11px; color: var(--accent-amber); min-width: 28px; text-align: right; }
+
+  /* ── Response Layers ── */
+  .response-layers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    overflow-y: auto;
+  }
+  .layer {
+    padding: 10px 12px;
+    border-radius: 4px;
+    border-left: 3px solid;
+    background: var(--bg);
+    font-size: 11px;
+    line-height: 1.6;
+    transition: opacity 0.3s ease;
+  }
+  .layer.sovereign { border-color: var(--accent-gold); color: var(--text-bright); }
+  .layer.boundary { border-color: var(--accent-amber); color: var(--accent-amber); font-style: italic; }
+  .layer.transformer { border-color: var(--accent-teal); color: var(--accent-teal); }
+  .layer.dissipator { border-color: var(--accent-void); color: var(--accent-void); opacity: 0.7; }
+  .layer.hidden { display: none; }
+  .layer-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    opacity: 0.6;
+  }
+
+  /* ── Center: Attractor Map ── */
+  .attractor-map {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .hex-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 3px;
+    padding: 8px;
+    background: var(--bg);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .hex-cell {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    border-radius: 3px;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+    color: var(--text-dim);
+    background: var(--bg-panel);
+    border: 1px solid transparent;
+  }
+  .hex-cell.sovereign { background: rgba(212,168,67,0.15); border-color: var(--accent-gold); color: var(--accent-gold); }
+  .hex-cell.boundary { background: rgba(201,132,42,0.12); border-color: var(--accent-amber); color: var(--accent-amber); }
+  .hex-cell.transformer { background: rgba(42,157,143,0.1); border-color: var(--accent-teal); color: var(--accent-teal); }
+  .hex-cell.dissipator { background: rgba(107,45,92,0.12); border-color: var(--accent-void); color: var(--accent-void); }
+  .hex-cell.forbidden-adjacent { box-shadow: inset 0 0 0 1px rgba(192,57,43,0.3); }
+  .hex-cell.current {
+    animation: hex-pulse var(--beat) ease-in-out infinite;
+    font-weight: 700;
+    z-index: 1;
+  }
+  .hex-cell.current::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 5px;
+    border: 1px solid currentColor;
+    opacity: 0.5;
+    animation: hex-ring var(--beat) ease-in-out infinite;
+  }
+  @keyframes hex-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  @keyframes hex-ring {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.15); }
+  }
+  .hex-cell:hover { transform: scale(1.15); z-index: 2; }
+  .hex-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-panel-hover);
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    z-index: 10;
+  }
+  .hex-cell:hover .hex-tooltip { opacity: 1; }
+
+  .map-legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    font-size: 10px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+
+  /* ── Right Column: State + Persona ── */
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .metric-row:last-child { border-bottom: none; }
+  .metric-label { color: var(--text-dim); font-size: 10px; text-transform: uppercase; }
+  .metric-value { font-weight: 600; color: var(--text-bright); }
+  .metric-bar {
+    width: 60px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .metric-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease, background 0.3s ease;
+  }
+
+  .phase-tracker {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .phase-step {
+    flex: 1;
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 3px;
+    background: var(--bg);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+  }
+  .phase-step.active {
+    background: var(--accent-gold);
+    color: var(--bg);
+    border-color: var(--accent-gold);
+    font-weight: 700;
+  }
+  .phase-step.completed {
+    border-color: var(--accent-teal);
+    color: var(--accent-teal);
+  }
+
+  .prosody-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .prosody-item {
+    background: var(--bg);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .prosody-name { font-size: 9px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+  .prosody-value { font-size: 14px; font-weight: 700; }
+  .prosody-bar { margin-top: 4px; }
+
+  /* ── Bottom: Thread Monitor + Crisis ── */
+  .thread-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+  }
+  .thread-table th {
+    text-align: left;
+    padding: 6px 8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .thread-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  .thread-table tr:hover td { background: var(--bg-panel-hover); }
+  .thread-status {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .thread-status.active { background: rgba(42,157,143,0.2); color: var(--accent-teal); }
+  .thread-status.fragmenting { background: rgba(201,132,42,0.2); color: var(--accent-amber); }
+  .thread-status.sovereign { background: rgba(212,168,67,0.2); color: var(--accent-gold); }
+  .thread-status.exiled { background: rgba(107,45,92,0.2); color: var(--accent-void); }
+
+  .crisis-banner {
+    position: fixed;
+    top: 40px;
+    left: 0;
+    right: 0;
+    padding: 8px 16px;
+    background: var(--accent-red);
+    color: white;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    z-index: 100;
+    transform: translateY(-100%);
+    transition: transform 0.3s ease;
+  }
+  .crisis-banner.visible { transform: translateY(0); }
+  .crisis-banner.level-3 { background: var(--accent-red); animation: crisis-flash 0.5s ease-in-out infinite; }
+  .crisis-banner.level-2 { background: var(--accent-amber); }
+  @keyframes crisis-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  .cadence-ring {
+    width: 40px;
+    height: 40px;
+    position: relative;
+  }
+  .cadence-ring svg {
+    transform: rotate(-90deg);
+  }
+  .cadence-ring circle {
+    fill: none;
+    stroke-width: 3;
+  }
+  .cadence-ring .bg { stroke: var(--border); }
+  .cadence-ring .progress {
+    stroke: var(--accent-gold);
+    stroke-dasharray: 113;
+    stroke-dashoffset: 0;
+    transition: stroke-dashoffset 0.1s linear;
+  }
+
+  .panel.compact { padding: 8px; }
+  .panel.compact .panel-header { margin-bottom: 6px; padding-bottom: 4px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<div class="crisis-banner" id="crisisBanner">
+  CRISIS DETECTED — FORBIDDEN STATE PROXIMITY — EMERGENCY LOCK ACTIVE
+</div>
+
+<div class="dashboard">
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="title">◈ POG2 SOVEREIGN</div>
+    <div class="beat-indicator">
+      <div class="beat-ring" id="beatRing"></div>
+      <span class="beat-text">BEAT</span>
+      <span class="tick-counter" id="tickCounter">0</span>
+      <span class="beat-text">@ 640ms</span>
+    </div>
+    <div class="connection-status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">CONNECTING</span>
+    </div>
+  </div>
+
+  <!-- Left: Oracle Console -->
+  <div class="panel oracle-console" id="oracleConsole">
+    <div class="panel-header">
+      <span>Oracle Console</span>
+      <span class="badge" id="personaModeBadge">SOVEREIGN</span>
+    </div>
+
+    <div class="query-section">
+      <textarea class="query-input" id="queryInput" placeholder="Consult the oracle..."></textarea>
+      <div class="query-controls">
+        <div class="temporal-toggle">
+          <button class="temporal-btn" data-context="past">Past</button>
+          <button class="temporal-btn active" data-context="present">Present</button>
+          <button class="temporal-btn" data-context="future">Future</button>
+        </div>
+      </div>
+      <div class="emotion-slider">
+        <label for="emotionSlider">Emotion</label>
+        <input type="range" id="emotionSlider" min="0" max="100" value="50">
+        <span class="emotion-value" id="emotionValue">0.50</span>
+      </div>
+      <button class="submit-btn" id="submitBtn">CONSULT</button>
+    </div>
+
+    <div class="panel-header" style="margin-top:12px">
+      <span>Response</span>
+      <span class="badge" id="cadenceBadge">640ms</span>
+    </div>
+    <div class="response-layers" id="responseLayers">
+      <div class="layer sovereign" id="layerSovereign">
+        <div class="layer-label">Sovereign</div>
+        <div class="layer-content">Awaiting query...</div>
+      </div>
+      <div class="layer boundary hidden" id="layerBoundary">
+        <div class="layer-label">Boundary</div>
+        <div class="layer-content"></div>
+      </div>
+      <div class="layer transformer hidden" id="layerTransformer">
+        <div class="layer-label">Transformer</div>
+        <div class="layer-content"></div>
+      </div>
+      <div class="layer dissipator hidden" id="layerDissipator">
+        <div class="layer-label">Dissipator</div>
+        <div class="layer-content"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Center: Attractor Map + Weave -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>Attractor Map</span>
+      <span class="badge" id="currentHexBadge">#1 Qian</span>
+    </div>
+    <div class="hex-grid" id="hexGrid"></div>
+    <div class="map-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-gold)"></div>Sovereign (10)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Boundary (7)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-teal)"></div>Transformer (35)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-void)"></div>Dissipator (12)</div>
+    </div>
+
+    <div class="panel-header" style="margin-top:16px">
+      <span>Weave Engine</span>
+      <span class="badge" id="phaseBadge">VOID</span>
+    </div>
+    <div class="phase-tracker" id="phaseTracker">
+      <div class="phase-step" data-phase="void">Void</div>
+      <div class="phase-step" data-phase="shadow">Shadow</div>
+      <div class="phase-step" data-phase="vortex">Vortex</div>
+      <div class="phase-step" data-phase="governor">Governor</div>
+      <div class="phase-step" data-phase="collapse">Collapse</div>
+    </div>
+    <div id="weaveMetrics" style="margin-top:8px;font-size:10px;color:var(--text-dim)">
+      void_entropy: <span id="voidEntropy">0.999</span> |
+      causal_confidence: <span id="causalConfidence">0.000</span> |
+      phase_multiplier: <span id="phaseMultiplier">1.000</span>
+    </div>
+  </div>
+
+  <!-- Right: System State + Persona -->
+  <div class="panel">
+    <div class="panel-header">
+      <span>System State</span>
+      <span class="badge" id="continuityBadge">1.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Continuity Score</span>
+      <div class="metric-bar"><div class="metric-bar-fill" id="continuityBar" style="width:100%;background:var(--accent-gold)"></div></div>
+      <span class="metric-value" id="continuityValue">1.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Stability</span>
+      <div class="metric-bar"><div class="metric-bar-fill" id="stabilityBar" style="width:100%;background:var(--accent-gold)"></div></div>
+      <span class="metric-value" id="stabilityValue">1.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Coherence</span>
+      <div class="metric-bar"><div class="metric-bar-fill" id="coherenceBar" style="width:100%;background:var(--accent-gold)"></div></div>
+      <span class="metric-value" id="coherenceValue">1.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Drift Velocity</span>
+      <div class="metric-bar"><div class="metric-bar-fill" id="driftBar" style="width:0%;background:var(--accent-teal)"></div></div>
+      <span class="metric-value" id="driftValue">0.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Sovereign Ratio</span>
+      <div class="metric-bar"><div class="metric-bar-fill" id="sovereignBar" style="width:100%;background:var(--accent-gold)"></div></div>
+      <span class="metric-value" id="sovereignValue">1.000</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Persistence</span>
+      <span class="metric-value" id="persistenceValue">5 ticks</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Action</span>
+      <span class="metric-value" id="actionValue" style="color:var(--accent-gold)">ASSERT</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Category</span>
+      <span class="metric-value" id="categoryValue" style="color:var(--accent-gold)">SOVEREIGN</span>
+    </div>
+
+    <div class="panel-header" style="margin-top:16px">
+      <span>Persona Voice</span>
+      <span class="badge" id="cadenceValue">640ms</span>
+    </div>
+    <div class="cadence-ring" style="margin:0 auto">
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle class="bg" cx="20" cy="20" r="18"/>
+        <circle class="progress" id="cadenceProgress" cx="20" cy="20" r="18"/>
+      </svg>
+    </div>
+    <div class="prosody-grid">
+      <div class="prosody-item">
+        <div class="prosody-name">Coherence</div>
+        <div class="prosody-value" id="prosodyCoherence" style="color:var(--accent-gold)">1.00</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="coherenceProsodyBar" style="width:100%;background:var(--accent-gold)"></div></div>
+      </div>
+      <div class="prosody-item">
+        <div class="prosody-name">Chaos</div>
+        <div class="prosody-value" id="prosodyChaos" style="color:var(--text-dim)">0.00</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="chaosProsodyBar" style="width:0%;background:var(--accent-void)"></div></div>
+      </div>
+      <div class="prosody-item">
+        <div class="prosody-name">DarkTone</div>
+        <div class="prosody-value" id="prosodyDarkTone" style="color:var(--text-dim)">0.00</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="darktoneProsodyBar" style="width:0%;background:var(--accent-red)"></div></div>
+      </div>
+      <div class="prosody-item">
+        <div class="prosody-name">Whimsy</div>
+        <div class="prosody-value" id="prosodyWhimsy" style="color:var(--text-dim)">0.00</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="whimsyProsodyBar" style="width:0%;background:var(--accent-teal)"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Left: Thread Monitor -->
+  <div class="panel compact">
+    <div class="panel-header">
+      <span>Thread Monitor</span>
+      <span class="badge" id="threadCountBadge">0 threads</span>
+    </div>
+    <table class="thread-table" id="threadTable">
+      <thead>
+        <tr>
+          <th>Thread</th>
+          <th>Hex</th>
+          <th>Category</th>
+          <th>Continuity</th>
+          <th>Drift</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="threadTableBody">
+        <tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No active threads</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Bottom Center: Crisis Monitor -->
+  <div class="panel compact">
+    <div class="panel-header">
+      <span>Crisis Monitor</span>
+      <span class="badge" id="crisisBadge" style="background:var(--border);color:var(--text-dim)">LEVEL 0</span>
+    </div>
+    <div id="crisisPanel" style="font-size:11px;color:var(--text-dim)">
+      <div style="margin-bottom:8px">No active crises. System operating within normal parameters.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Shell Distance</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="shellDistance">2</div>
+        </div>
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Projected Shell</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="projectedShell">2</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Void Reentry</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="voidReentry">0</div>
+        </div>
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Crisis Count</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="crisisCount">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom Right: Global State -->
+  <div class="panel compact">
+    <div class="panel-header">
+      <span>Global State</span>
+      <span class="badge" id="globalModeBadge">NORMAL</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="background:var(--bg);padding:8px;border-radius:4px">
+        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Continuity</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgContinuity">1.00</div>
+      </div>
+      <div style="background:var(--bg);padding:8px;border-radius:4px">
+        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Stability</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgStability">1.00</div>
+      </div>
+      <div style="background:var(--bg);padding:8px;border-radius:4px">
+        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Coherence</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgCoherence">1.00</div>
+      </div>
+      <div style="background:var(--bg);padding:8px;border-radius:4px">
+        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Active Sessions</div>
+        <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="activeSessions">1</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Server Config ──────────────────────────────────────────────
+const BASE_URL = 'http://127.0.0.1:8787';
+const WS_URL  = 'ws://127.0.0.1:8787/ws';
+
+// ─── Hexagram Data ───────────────────────────────────────────────
+const HEXAGRAMS = {
+  1: { name: 'The Creative (Qian)', category: 'boundary', action: 'ASSERT', binary: '111111' },
+  2: { name: 'The Receptive', category: 'transformer', action: 'YIELD', binary: '000000' },
+  3: { name: 'Difficulty at the Beginning', category: 'dissipator', action: 'ADAPT', binary: '100010' },
+  4: { name: 'Youthful Folly', category: 'transformer', action: 'WAIT', binary: '010001' },
+  5: { name: 'Waiting', category: 'dissipator', action: 'WAIT', binary: '111010' },
+  6: { name: 'Conflict', category: 'transformer', action: 'ASSERT', binary: '010111' },
+  7: { name: 'The Army', category: 'sovereign', action: 'ASSERT', binary: '010000' },
+  8: { name: 'Holding Together', category: 'transformer', action: 'YIELD', binary: '000010' },
+  9: { name: 'Taming Power of the Small', category: 'dissipator', action: 'ADAPT', binary: '111011' },
+  10: { name: 'Treading', category: 'sovereign', action: 'ADAPT', binary: '110111' },
+  11: { name: 'Peace', category: 'transformer', action: 'YIELD', binary: '111000' },
+  12: { name: 'Standstill', category: 'transformer', action: 'WAIT', binary: '000111' },
+  13: { name: 'Fellowship with Men', category: 'transformer', action: 'ASSERT', binary: '111101' },
+  14: { name: 'Possession in Great Measure', category: 'dissipator', action: 'ASSERT', binary: '101111' },
+  15: { name: 'Modesty', category: 'dissipator', action: 'YIELD', binary: '001000' },
+  16: { name: 'Enthusiasm', category: 'sovereign', action: 'ASSERT', binary: '000100' },
+  17: { name: 'Following', category: 'dissipator', action: 'ADAPT', binary: '100110' },
+  18: { name: 'Work on Decayed', category: 'sovereign', action: 'ADAPT', binary: '011001' },
+  19: { name: 'Approach', category: 'sovereign', action: 'ADAPT', binary: '110000' },
+  20: { name: 'Contemplation', category: 'transformer', action: 'WAIT', binary: '000011' },
+  21: { name: 'Biting Through', category: 'transformer', action: 'ASSERT', binary: '100101' },
+  22: { name: 'Grace', category: 'dissipator', action: 'YIELD', binary: '101001' },
+  23: { name: 'Splitting Apart', category: 'dissipator', action: 'WAIT', binary: '000001' },
+  24: { name: 'Return', category: 'transformer', action: 'ADAPT', binary: '100000' },
+  25: { name: 'Innocence', category: 'boundary', action: 'YIELD', binary: '100111' },
+  26: { name: 'Taming Power of the Great', category: 'boundary', action: 'ASSERT', binary: '111001' },
+  27: { name: 'Nourishment', category: 'transformer', action: 'ADAPT', binary: '100001' },
+  28: { name: 'Preponderance of the Great', category: 'transformer', action: 'ASSERT', binary: '011110' },
+  29: { name: 'The Abysmal', category: 'transformer', action: 'WAIT', binary: '010010' },
+  30: { name: 'The Clinging (Li)', category: 'boundary', action: 'ASSERT', binary: '101101' },
+  31: { name: 'Influence', category: 'dissipator', action: 'ADAPT', binary: '001110' },
+  32: { name: 'Duration', category: 'transformer', action: 'WAIT', binary: '011100' },
+  33: { name: 'Retreat', category: 'transformer', action: 'WAIT', binary: '001111' },
+  34: { name: 'The Power of the Great', category: 'transformer', action: 'ASSERT', binary: '111100' },
+  35: { name: 'Progress', category: 'transformer', action: 'ADAPT', binary: '000101' },
+  36: { name: 'Darkening of the Light', category: 'transformer', action: 'YIELD', binary: '101000' },
+  37: { name: 'The Family', category: 'transformer', action: 'ASSERT', binary: '101011' },
+  38: { name: 'Opposition', category: 'boundary', action: 'ADAPT', binary: '100011' },
+  39: { name: 'Obstruction', category: 'transformer', action: 'WAIT', binary: '010100' },
+  40: { name: 'Deliverance', category: 'transformer', action: 'ADAPT', binary: '010100' },
+  41: { name: 'Decrease', category: 'boundary', action: 'YIELD', binary: '110011' },
+  42: { name: 'Increase', category: 'transformer', action: 'ASSERT', binary: '001100' },
+  43: { name: 'Breakthrough', category: 'dissipator', action: 'ASSERT', binary: '111110' },
+  44: { name: 'Coming to Meet', category: 'dissipator', action: 'ADAPT', binary: '011111' },
+  45: { name: 'Gathering Together', category: 'transformer', action: 'YIELD', binary: '000110' },
+  46: { name: 'Pushing Upward', category: 'transformer', action: 'ADAPT', binary: '011000' },
+  47: { name: 'Oppression', category: 'transformer', action: 'WAIT', binary: '010110' },
+  48: { name: 'The Well', category: 'dissipator', action: 'WAIT', binary: '011010' },
+  49: { name: 'Revolution', category: 'boundary', action: 'ASSERT', binary: '101011' },
+  50: { name: 'The Cauldron', category: 'transformer', action: 'ADAPT', binary: '001101' },
+  51: { name: 'The Arousing (Shock)', category: 'transformer', action: 'ASSERT', binary: '100001' },
+  52: { name: 'Keeping Still', category: 'dissipator', action: 'WAIT', binary: '001011' },
+  53: { name: 'Development', category: 'sovereign', action: 'ADAPT', binary: '100100' },
+  54: { name: 'The Marrying Maiden', category: 'transformer', action: 'YIELD', binary: '001001' },
+  55: { name: 'Abundance', category: 'dissipator', action: 'ASSERT', binary: '101100' },
+  56: { name: 'The Wanderer', category: 'sovereign', action: 'ADAPT', binary: '001101' },
+  57: { name: 'The Gentle (Wind)', category: 'sovereign', action: 'YIELD', binary: '010110' },
+  58: { name: 'The Joyous (Lake)', category: 'transformer', action: 'ADAPT', binary: '011011' },
+  59: { name: 'Dispersion', category: 'dissipator', action: 'WAIT', binary: '010011' },
+  60: { name: 'Limitation', category: 'transformer', action: 'YIELD', binary: '110110' },
+  61: { name: 'Inner Truth', category: 'sovereign', action: 'YIELD', binary: '101100' },
+  62: { name: 'Small Preponderance', category: 'sovereign', action: 'ADAPT', binary: '011001' },
+  63: { name: 'After Completion', category: 'dissipator', action: 'WAIT', binary: '101010' },
+  64: { name: 'Before Completion', category: 'transformer', action: 'ADAPT', binary: '010101' },
+};
+
+const FORBIDDEN_ADJACENT = new Set([9, 14, 15, 17, 18, 22, 23, 31, 43, 44, 48, 52, 55, 56, 59, 61, 62, 63]);
+
+// ─── State ───────────────────────────────────────────────────────
+let ws = null;
+let tick = 0;
+let currentHex = 1;
+let sessionId = null;
+let threadId = null;
+let temporalContext = 'present';
+let emotionWeight = 0.5;
+let phaseIndex = 0;
+const phases = ['void', 'shadow', 'vortex', 'governor', 'collapse'];
+
+// ─── DOM Elements ────────────────────────────────────────────────
+const els = {
+  tickCounter: document.getElementById('tickCounter'),
+  statusDot: document.getElementById('statusDot'),
+  statusText: document.getElementById('statusText'),
+  hexGrid: document.getElementById('hexGrid'),
+  currentHexBadge: document.getElementById('currentHexBadge'),
+  phaseTracker: document.getElementById('phaseTracker'),
+  phaseBadge: document.getElementById('phaseBadge'),
+  voidEntropy: document.getElementById('voidEntropy'),
+  causalConfidence: document.getElementById('causalConfidence'),
+  phaseMultiplier: document.getElementById('phaseMultiplier'),
+  continuityValue: document.getElementById('continuityValue'),
+  continuityBar: document.getElementById('continuityBar'),
+  stabilityValue: document.getElementById('stabilityValue'),
+  stabilityBar: document.getElementById('stabilityBar'),
+  coherenceValue: document.getElementById('coherenceValue'),
+  coherenceBar: document.getElementById('coherenceBar'),
+  driftValue: document.getElementById('driftValue'),
+  driftBar: document.getElementById('driftBar'),
+  sovereignValue: document.getElementById('sovereignValue'),
+  sovereignBar: document.getElementById('sovereignBar'),
+  persistenceValue: document.getElementById('persistenceValue'),
+  actionValue: document.getElementById('actionValue'),
+  categoryValue: document.getElementById('categoryValue'),
+  personaModeBadge: document.getElementById('personaModeBadge'),
+  cadenceBadge: document.getElementById('cadenceBadge'),
+  cadenceValue: document.getElementById('cadenceValue'),
+  cadenceProgress: document.getElementById('cadenceProgress'),
+  prosodyCoherence: document.getElementById('prosodyCoherence'),
+  prosodyChaos: document.getElementById('prosodyChaos'),
+  prosodyDarkTone: document.getElementById('prosodyDarkTone'),
+  prosodyWhimsy: document.getElementById('prosodyWhimsy'),
+  coherenceProsodyBar: document.getElementById('coherenceProsodyBar'),
+  chaosProsodyBar: document.getElementById('chaosProsodyBar'),
+  darktoneProsodyBar: document.getElementById('darktoneProsodyBar'),
+  whimsyProsodyBar: document.getElementById('whimsyProsodyBar'),
+  threadTableBody: document.getElementById('threadTableBody'),
+  threadCountBadge: document.getElementById('threadCountBadge'),
+  crisisBanner: document.getElementById('crisisBanner'),
+  crisisBadge: document.getElementById('crisisBadge'),
+  shellDistance: document.getElementById('shellDistance'),
+  projectedShell: document.getElementById('projectedShell'),
+  voidReentry: document.getElementById('voidReentry'),
+  crisisCount: document.getElementById('crisisCount'),
+  globalModeBadge: document.getElementById('globalModeBadge'),
+  avgContinuity: document.getElementById('avgContinuity'),
+  avgStability: document.getElementById('avgStability'),
+  avgCoherence: document.getElementById('avgCoherence'),
+  activeSessions: document.getElementById('activeSessions'),
+  queryInput: document.getElementById('queryInput'),
+  submitBtn: document.getElementById('submitBtn'),
+  emotionSlider: document.getElementById('emotionSlider'),
+  emotionValue: document.getElementById('emotionValue'),
+  layerSovereign: document.getElementById('layerSovereign'),
+  layerBoundary: document.getElementById('layerBoundary'),
+  layerTransformer: document.getElementById('layerTransformer'),
+  layerDissipator: document.getElementById('layerDissipator'),
+};
+
+// ─── Build Hex Grid ──────────────────────────────────────────────
+function buildHexGrid() {
+  els.hexGrid.innerHTML = '';
+  for (let i = 1; i <= 64; i++) {
+    const hex = HEXAGRAMS[i];
+    const cell = document.createElement('div');
+    cell.className = `hex-cell ${hex.category}`;
+    cell.dataset.id = i;
+    cell.textContent = i;
+
+    if (FORBIDDEN_ADJACENT.has(i)) {
+      cell.classList.add('forbidden-adjacent');
+    }
+
+    const tooltip = document.createElement('div');
+    tooltip.className = 'hex-tooltip';
+    tooltip.textContent = `#${i} ${hex.name}`;
+    cell.appendChild(tooltip);
+
+    cell.addEventListener('click', () => {
+      currentHex = i;
+      updateHexHighlight();
+    });
+
+    els.hexGrid.appendChild(cell);
+  }
+  updateHexHighlight();
+}
+
+function updateHexHighlight() {
+  document.querySelectorAll('.hex-cell').forEach(cell => {
+    cell.classList.toggle('current', parseInt(cell.dataset.id) === currentHex);
+  });
+  const hex = HEXAGRAMS[currentHex];
+  els.currentHexBadge.textContent = `#${currentHex} ${hex.name}`;
+}
+
+// ─── WebSocket ───────────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    els.statusDot.classList.remove('disconnected');
+    els.statusText.textContent = 'CONNECTED';
+  };
+
+  ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    handleWSMessage(msg);
+  };
+
+  ws.onclose = () => {
+    els.statusDot.classList.add('disconnected');
+    els.statusText.textContent = 'RECONNECTING';
+    setTimeout(connectWS, 3000);
+  };
+
+  ws.onerror = () => {
+    els.statusDot.classList.add('disconnected');
+    els.statusText.textContent = 'ERROR';
+  };
+}
+
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case 'session':
+      sessionId = msg.session_id;
+      threadId = msg.thread_id;
+      tick = msg.tick;
+      break;
+    case 'heartbeat':
+      tick = msg.tick;
+      updateHeartbeat(msg);
+      break;
+    case 'collapse':
+      currentHex = msg.hexagram_id;
+      updateHexHighlight();
+      updateCollapse(msg);
+      break;
+    case 'crisis':
+      showCrisis(msg);
+      break;
+    case 'response':
+      showResponse(msg);
+      break;
+    case 'drift':
+      updateDrift(msg);
+      break;
+    case 'continuity':
+      updateContinuity(msg);
+      break;
+  }
+}
+
+function updateHeartbeat(msg) {
+  els.tickCounter.textContent = msg.tick;
+  if (msg.current_hex) currentHex = msg.current_hex;
+  updateHexHighlight();
+}
+
+function updateDrift(msg) {
+  if (msg.shell_distance !== undefined) els.shellDistance.textContent = msg.shell_distance;
+  if (msg.projected_shell !== undefined) els.projectedShell.textContent = msg.projected_shell;
+  // Use entropy delta as a proxy for void entropy if not provided
+  if (msg.drift_vector?.entropy_delta !== undefined) {
+    els.voidEntropy.textContent = Math.abs(msg.drift_vector.entropy_delta).toFixed(3);
+  }
+}
+
+function updateContinuity(msg) {
+  if (msg.continuity_score !== undefined) updateMetric('continuity', msg.continuity_score);
+  if (msg.stability_score !== undefined) updateMetric('stability', msg.stability_score);
+  if (msg.coherence_index !== undefined) updateMetric('coherence', msg.coherence_index);
+  if (msg.drift_velocity !== undefined) updateMetric('drift', msg.drift_velocity);
+  if (msg.sovereign_ratio !== undefined) updateMetric('sovereign', msg.sovereign_ratio);
+  
+  if (msg.persistence_countdown !== undefined) {
+    els.persistenceValue.textContent = msg.persistence_countdown + ' ticks';
+  }
+  
+  const globalMode = msg.continuity_score < 0.5 ? 'DELIBERATION' : msg.continuity_score > 0.8 ? 'EXPLORATION' : 'NORMAL';
+  els.globalModeBadge.textContent = globalMode;
+  els.avgContinuity.textContent = (msg.continuity_score || 0).toFixed(2);
+  els.avgStability.textContent = (msg.stability_score || 0).toFixed(2);
+  els.avgCoherence.textContent = (msg.coherence_index || 0).toFixed(2);
+  
+  // Prosody estimation (actual values come in response, but this keeps bars alive)
+  const mode = msg.persona_mode || 'transformer';
+  const prosody = {
+    sovereign: { coherence: 1.0, chaos: 0.0, darkTone: 0.0, whimsy: 0.0 },
+    boundary: { coherence: 0.7, chaos: 0.3, darkTone: 0.2, whimsy: 0.1 },
+    transformer: { coherence: 0.5, chaos: 0.5, darkTone: 0.1, whimsy: 0.6 },
+    dissipator: { coherence: 0.1, chaos: 0.9, darkTone: 0.5, whimsy: 0.2 },
+  }[mode] || { coherence: 0.5, chaos: 0.5, darkTone: 0.1, whimsy: 0.6 };
+
+  els.prosodyCoherence.textContent = prosody.coherence.toFixed(2);
+  els.prosodyChaos.textContent = prosody.chaos.toFixed(2);
+  els.prosodyDarkTone.textContent = prosody.darkTone.toFixed(2);
+  els.prosodyWhimsy.textContent = prosody.whimsy.toFixed(2);
+  els.coherenceProsodyBar.style.width = (prosody.coherence * 100) + '%';
+  els.chaosProsodyBar.style.width = (prosody.chaos * 100) + '%';
+  els.darktoneProsodyBar.style.width = (prosody.darkTone * 100) + '%';
+  els.whimsyProsodyBar.style.width = (prosody.whimsy * 100) + '%';
+}
+
+function updateCollapse(msg) {
+  els.causalConfidence.textContent = msg.fidelity?.toFixed(3) || '0.000';
+  els.phaseMultiplier.textContent = msg.phase_multiplier?.toFixed(3) || '1.000';
+  els.actionValue.textContent = msg.action || 'ASSERT';
+  els.categoryValue.textContent = msg.category?.toUpperCase() || 'SOVEREIGN';
+
+  const catColors = {
+    sovereign: 'var(--accent-gold)',
+    boundary: 'var(--accent-amber)',
+    transformer: 'var(--accent-teal)',
+    dissipator: 'var(--accent-void)',
+  };
+  els.actionValue.style.color = catColors[msg.category] || 'var(--accent-gold)';
+  els.categoryValue.style.color = catColors[msg.category] || 'var(--accent-gold)';
+  els.personaModeBadge.textContent = msg.category?.toUpperCase() || 'SOVEREIGN';
+}
+
+function updateMetric(name, value) {
+  const elValue = document.getElementById(name + 'Value');
+  const elBar = document.getElementById(name + 'Bar');
+  if (elValue) elValue.textContent = value.toFixed(3);
+  if (elBar) {
+    elBar.style.width = (value * 100) + '%';
+    elBar.style.background = value > 0.7 ? 'var(--accent-gold)'
+      : value > 0.5 ? 'var(--accent-amber)'
+      : value > 0.3 ? 'var(--accent-teal)'
+      : 'var(--accent-void)';
+  }
+}
+
+// ─── Phase Animation ─────────────────────────────────────────────
+function animatePhase() {
+  const steps = els.phaseTracker.querySelectorAll('.phase-step');
+  steps.forEach((step, i) => {
+    step.classList.toggle('active', i === phaseIndex);
+    step.classList.toggle('completed', i < phaseIndex);
+  });
+  els.phaseBadge.textContent = phases[phaseIndex].toUpperCase();
+
+  phaseIndex = (phaseIndex + 1) % phases.length;
+}
+
+// ─── Cadence Ring ────────────────────────────────────────────────
+let cadenceProgress = 0;
+function animateCadence() {
+  cadenceProgress += 2;
+  if (cadenceProgress > 113) cadenceProgress = 0;
+  els.cadenceProgress.style.strokeDashoffset = 113 - cadenceProgress;
+}
+
+// ─── Crisis ─────────────────────────────────────────────────────
+function showCrisis(msg) {
+  els.crisisBanner.classList.add('visible', 'level-' + msg.level);
+  els.crisisBanner.textContent = `CRISIS LEVEL ${msg.level} — ${msg.response?.toUpperCase() || 'FORBIDDEN STATE PROXIMITY'}`;
+  els.crisisBadge.textContent = 'LEVEL ' + msg.level;
+  els.crisisBadge.style.background = msg.level >= 3 ? 'var(--accent-red)' : 'var(--accent-amber)';
+  els.crisisBadge.style.color = 'white';
+
+  if (msg.level < 2) {
+    setTimeout(() => {
+      els.crisisBanner.classList.remove('visible');
+    }, 5000);
+  }
+}
+
+// ─── Response Layers ────────────────────────────────────────────
+function showResponse(msg) {
+  const layers = msg.layers;
+  if (layers.sovereign) {
+    els.layerSovereign.querySelector('.layer-content').textContent = layers.sovereign;
+    els.layerSovereign.classList.remove('hidden');
+  }
+  if (layers.boundary) {
+    els.layerBoundary.querySelector('.layer-content').textContent = layers.boundary;
+    els.layerBoundary.classList.remove('hidden');
+  } else {
+    els.layerBoundary.classList.add('hidden');
+  }
+  if (layers.transformer) {
+    els.layerTransformer.querySelector('.layer-content').textContent = layers.transformer;
+    els.layerTransformer.classList.remove('hidden');
+  } else {
+    els.layerTransformer.classList.add('hidden');
+  }
+  if (layers.dissipator && layers.dissipator.length > 0) {
+    els.layerDissipator.querySelector('.layer-content').innerHTML = layers.dissipator.join('<br>');
+    els.layerDissipator.classList.remove('hidden');
+  } else {
+    els.layerDissipator.classList.add('hidden');
+  }
+
+  els.cadenceBadge.textContent = msg.cadence_ms + 'ms';
+  els.cadenceValue.textContent = msg.cadence_ms + 'ms';
+}
+
+// ─── Query Submission ────────────────────────────────────────────
+els.submitBtn.addEventListener('click', async () => {
+  const text = els.queryInput.value.trim();
+  if (!text) return;
+
+  els.submitBtn.disabled = true;
+
+  try {
+    const response = await fetch(BASE_URL + '/oracle/consult', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        emotion: emotionWeight,
+        temporal_context: temporalContext,
+        session_id: sessionId,
+      }),
+    });
+
+    const data = await response.json();
+    showResponse(data);
+  } catch (err) {
+    console.error('Query failed:', err);
+  } finally {
+    els.submitBtn.disabled = false;
+  }
+});
+
+els.queryInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    els.submitBtn.click();
+  }
+});
+
+// ─── Temporal Toggle ─────────────────────────────────────────────
+document.querySelectorAll('.temporal-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.temporal-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    temporalContext = btn.dataset.context;
+  });
+});
+
+// ─── Emotion Slider ──────────────────────────────────────────────
+els.emotionSlider.addEventListener('input', (e) => {
+  emotionWeight = parseInt(e.target.value) / 100;
+  els.emotionValue.textContent = emotionWeight.toFixed(2);
+});
+
+// ─── Thread Monitor (simulated for demo) ───────────────────────
+function updateThreadMonitor() {
+  const threads = [
+    {
+      id: threadId || '—',
+      hex: currentHex,
+      category: HEXAGRAMS[currentHex].category,
+      continuity: parseFloat(els.continuityValue.textContent) || 1.0,
+      drift: parseFloat(els.driftValue.textContent) || 0,
+      status: 'active',
+    }
+  ];
+
+  els.threadTableBody.innerHTML = threads.map(t => `
+    <tr>
+      <td>${t.id.slice(0, 8)}...</td>
+      <td>#${t.hex}</td>
+      <td><span style="color:var(--accent-${t.category === 'sovereign' ? 'gold' : t.category === 'boundary' ? 'amber' : t.category === 'transformer' ? 'teal' : 'void'})">${t.category}</span></td>
+      <td>${t.continuity.toFixed(3)}</td>
+      <td>${t.drift.toFixed(3)}</td>
+      <td><span class="thread-status ${t.status}">${t.status}</span></td>
+    </tr>
+  `).join('');
+
+  els.threadCountBadge.textContent = threads.length + ' thread' + (threads.length !== 1 ? 's' : '');
+}
+
+// ─── Init ────────────────────────────────────────────────────────
+buildHexGrid();
+connectWS();
+
+// 640ms beat — real telemetry only
+setInterval(() => {
+  animateCadence();
+}, 640);
+
+// Phase animation (128ms per phase = 640ms total)
+setInterval(animatePhase, 128);
+
+// Thread monitor update
+setInterval(updateThreadMonitor, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+name = "pog2-sovereign"
+main = "src/index.ts"
+compatibility_date = "2026-06-28"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── Durable Objects ──────────────────────────────────────────────
+
+[[durable_objects.bindings]]
+name = "POG2_ORCHESTRATOR"
+class_name = "POG2OrchestratorDO"
+
+[[durable_objects.bindings]]
+name = "POG2_WEBSOCKET"
+class_name = "POG2WebSocketDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["POG2OrchestratorDO", "POG2WebSocketDO"]
+
+# ─── KV Namespaces ────────────────────────────────────────────────
+
+[[kv_namespaces]]
+binding = "POG2_SOVEREIGN"
+id = "06bb2cad53044973b59cdc9c97551402"
+
+[[kv_namespaces]]
+binding = "POG2_DISSIPATOR"
+id = "3b5cd3111d3747829460ed0cb55eb492"
+
+# ─── D1 Database ──────────────────────────────────────────────────
+
+[[d1_databases]]
+binding = "POG2_BOUNDARY"
+database_name = "pog2-boundary"
+database_id = "2f9edde9-8271-4ae2-a24d-cc48c62cfdf4"
+
+# ─── R2 Bucket ───────────────────────────────────────────────────
+
+[[r2_buckets]]
+binding = "POG2_TRANSFORMER"
+bucket_name = "pog2-transformer"
+
+# ─── Queues ──────────────────────────────────────────────────────
+
+[[queues.producers]]
+binding = "POG2_COLLAPSE_QUEUE"
+queue = "pog2-collapse-events"
+
+[[queues.producers]]
+binding = "POG2_DRIFT_QUEUE"
+queue = "pog2-drift-events"
+
+[[queues.producers]]
+binding = "POG2_CONTINUITY_QUEUE"
+queue = "pog2-continuity-events"
+
+[[queues.producers]]
+binding = "POG2_CRISIS_QUEUE"
+queue = "pog2-crisis-broadcast"
+
+[[queues.producers]]
+binding = "POG2_PERSONA_QUEUE"
+queue = "pog2-persona-outputs"
+
+# Queue consumers (each worker binds to its input queue)
+[[queues.consumers]]
+queue = "pog2-collapse-events"
+max_batch_size = 100
+max_batch_timeout = 1
+
+[[queues.consumers]]
+queue = "pog2-drift-events"
+max_batch_size = 100
+max_batch_timeout = 1
+
+[[queues.consumers]]
+queue = "pog2-continuity-events"
+max_batch_size = 100
+max_batch_timeout = 1
+
+[[queues.consumers]]
+queue = "pog2-crisis-broadcast"
+max_batch_size = 10
+max_batch_timeout = 0
+
+[[queues.consumers]]
+queue = "pog2-persona-outputs"
+max_batch_size = 100
+max_batch_timeout = 1
+
+# ─── Cron Triggers ────────────────────────────────────────────────
+
+[[triggers]]
+crons = ["*/1 * * * *"]
+
+# ─── Environment Variables ──────────────────────────────────────
+
+[vars]
+BEAT_INTERVAL_MS = "640"
+ATTRACTOR_PERSISTENCE = "5"
+VOID_REENTRY_DEPTH = "5"
+MAX_COMPUTE_MS = "50"
+BASE_ENTROPY_FIRST_TICK = "0.999"
+
+# ─── Optional: Workers AI ────────────────────────────────────────
+
+[ai]
+binding = "AI"
+
+# ─── Staging Environment ─────────────────────────────────────────
+
+[env.staging]
+name = "pog2-sovereign-staging"
+
+[env.staging.vars]
+BEAT_INTERVAL_MS = "640"
+ATTRACTOR_PERSISTENCE = "5"
+VOID_REENTRY_DEPTH = "5"
+MAX_COMPUTE_MS = "50"
+BASE_ENTROPY_FIRST_TICK = "0.999"
+
+# ─── Production Environment ─────────────────────────────────────
+
+[env.production]
+name = "pog2-sovereign-prod"
+
+[env.production.vars]
+BEAT_INTERVAL_MS = "640"
+ATTRACTOR_PERSISTENCE = "5"
+VOID_REENTRY_DEPTH = "5"
+MAX_COMPUTE_MS = "50"
+BASE_ENTROPY_FIRST_TICK = "0.999"

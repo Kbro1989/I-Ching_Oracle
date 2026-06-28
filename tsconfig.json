@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "lib": ["ES2021"],
+    "types": ["@cloudflare/workers-types"],
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "cloudflare:workers": ["./node_modules/@cloudflare/workers-types/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "*.ts"]
+}
