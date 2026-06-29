@@ -46,7 +46,8 @@ export class POG2OrchestratorDO extends DurableObject<Env> {
 
       const existingAlarm = await this.ctx.storage.getAlarm();
       if (existingAlarm === null) {
-        await this.ctx.storage.setAlarm(Date.now() + 640);
+        // Canonical boundary: ensure DO uses wall-clock schedule.
+await this.ctx.storage.setAlarm(Date.now() + 640);
       }
     });
   }

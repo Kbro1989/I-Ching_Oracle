@@ -296,14 +296,13 @@ class PersonaEngine {
 
   private sha256Sync(data: string): string {
     // Note: In Cloudflare Workers, use crypto.subtle.digest async
-    // This is a simplified sync version for query processing
-    let hash = 0;
+    // Using DJB2-based 32-bit hash with 0x prefix to match existing stored values
+    let hash = 5381;
     for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
+      hash = ((hash << 5) + hash) + data.charCodeAt(i);
+      hash = hash & 0xffffffff;
     }
-    return Math.abs(hash).toString(16).padStart(64, '0');
+    return '0x' + Math.abs(hash).toString(16).padStart(8, '0');
   }
 }
 

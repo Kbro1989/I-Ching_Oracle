@@ -90,7 +90,7 @@ max_batch_timeout = 1
 
 # ─── Cron Triggers ────────────────────────────────────────────────
 
-[[triggers]]
+[triggers]
 crons = ["*/1 * * * *"]
 
 # ─── Environment Variables ──────────────────────────────────────

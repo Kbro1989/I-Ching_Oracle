@@ -408,7 +408,7 @@ class WeaveEngine {
       causal_confidence: governor.causalConfidence,
       category: 'sovereign',
       session_id: sessionId,
-      timestamp: Date.now(),
+      timestamp: tick * 640,
     };
   }
 }

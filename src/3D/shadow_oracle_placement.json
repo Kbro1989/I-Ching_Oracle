@@ -1,0 +1,68 @@
+{
+  "shadowOracleBox": {
+    "description": "Autonomous Shadow Oracle in a box - no player interaction required",
+    "spawnPoint": {
+      "worldX": 195,
+      "worldZ": 3223,
+      "plane": 0,
+      "renderY": 52,
+      "notes": "Positioned at center of raised platform in Daemonheim room (3,50): 30 floor + 16 platform + 6 hover"
+    },
+    "entityProperties": {
+      "npcId": 26244,
+      "modelId": 116821,
+      "scale": 28,
+      "ambience": 64,
+      "movementCapabilities": 1,
+      "animationGroup": 4361,
+      "colorReplacements": [53419, 935],
+      "interactable": false,
+      "drawMapDot": false
+    },
+    "autonomousHexagramCycle": {
+      "tickIntervalMs": 640,
+      "autoAdvance": true,
+      "driftEngine": {
+        "enabled": true,
+        "source": "weave.ts -> drift.ts"
+      },
+      "continuityLayer": {
+        "enabled": true,
+        "source": "continuity.ts"
+      },
+      "personaEngine": {
+        "enabled": true,
+        "source": "persona.ts",
+        "note": "Emergent behavior from hexagram sequences"
+      }
+    },
+    "colorSystem": {
+      "basePalette": [53419, 935],
+      "hexagramTint": "runtime overlay",
+      "dualOverlapSystem": {
+        "description": "64 color variations from 61 unique binaries + 3 overlapping pairs",
+        "overlappingBinaries": {
+          "011001": [18, 62],
+          "010110": [47, 57],
+          "101100": [55, 61]
+        },
+        "colorDerivation": "dual overlapped hexagrams with dual colors"
+      }
+    },
+    "roomBoundary": {
+      "bound": {
+      "mapsquareX": 3,
+      "mapsquareZ": 50,
+      "radius": 12
+    },
+    "culling": {
+      "enabled": false,
+      "note": "Oracle in a box - always active, no player proximity culling"
+    },
+    "telemetry": {
+      "enabled": true,
+      "type": "observable_only",
+      "note": "Output only: color tint, ambient animation, telemetry stream"
+    }
+  }
+}

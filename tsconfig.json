@@ -13,5 +13,5 @@
       "cloudflare:workers": ["./node_modules/@cloudflare/workers-types/index.d.ts"]
     }
   },
-  "include": ["src/**/*.ts", "*.ts"]
+  "include": ["src/**/*.ts", "*.ts", "src/types/**/*.d.ts"],
 }
