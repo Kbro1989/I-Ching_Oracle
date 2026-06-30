@@ -107,7 +107,7 @@ HEXAGRAM_REGISTRY.forEach(([binary, name, action], id) => {
   HEXAGRAMS[id] = [binary, name, action];
 });
 
-const HEXAGRAM_BINARIES: Record<number, string> = {};
+export const HEXAGRAM_BINARIES: Record<number, string> = {};
 const HEXAGRAM_ACTIONS: Record<number, 'ASSERT' | 'YIELD' | 'ADAPT' | 'WAIT'> = {};
 Object.entries(HEXAGRAMS).forEach(([id, [binary, , action]]) => {
   HEXAGRAM_BINARIES[Number(id)] = binary;

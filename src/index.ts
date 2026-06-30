@@ -22,7 +22,6 @@ export {
   onCrisisEvent,
   onPersonaOutput,
 } from './queues/handlers';
-export { default as onCrisisEvent } from './queues/handlers';
 
 // ─── Worker Fetch Handlers ────────────────────────────────────────
 

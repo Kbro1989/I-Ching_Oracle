@@ -43,6 +43,12 @@ export interface PersonaOutput {
   cadence_ms: number;
   persona_mode: string;
   consistency_score: number;
+  prosody: {
+    coherence: number;
+    chaos: number;
+    darkTone: number;
+    whimsy: number;
+  };
   timestamp: number;
 }
 
@@ -365,6 +371,7 @@ export default {
           cadence_ms: cadence,
           persona_mode: baseMode,
           consistency_score: continuity.continuity_score,
+          prosody: modulation,
           timestamp: Date.now(),
         };
 

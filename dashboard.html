@@ -4,6 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>POG2 Sovereign Dashboard</title>
+<!-- Three.js for 3D rendering -->
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    }
+  }
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+  window.THREE = THREE;
+  window.OrbitControls = OrbitControls;
+  window.GLTFLoader = GLTFLoader;
+  window.dispatchEvent(new Event('three-loaded'));
+</script>
 <style>
   :root {
     --bg: #0a0a0f;
@@ -31,17 +50,67 @@
   }
   .dashboard {
     display: grid;
-    grid-template-columns: 320px 1fr 320px;
-    grid-template-rows: 40px 1fr 200px;
+    grid-template-columns: 250px 1fr 250px;
+    grid-template-rows: 50px 1fr 120px;
     height: 100vh;
     gap: 1px;
     background: var(--border);
+  }
+
+  /* Make the main 3D view area take priority */
+  #main3dView {
+    display: contents;
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  /* Make 3D panels take equal space in the main view */
+  #modelPanel, #worldPanel {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #modelPanel .panel-header,
+  #worldPanel .panel-header {
+    flex-shrink: 0;
+    height: 30px;
+  }
+
+  #modelBox, #landBox {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* Reduce width of side panels */
+  .oracle-console,
+  .panel:not(#modelPanel):not(#worldPanel):not(.top-bar):not(#main3dView) {
+    max-width: 250px;
+  }
+
+  /* Make canvas elements fill their containers */
+  #modelCanvas, #landCanvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
   }
   .panel {
     background: var(--bg-panel);
     padding: 12px;
     overflow: auto;
     position: relative;
+  }
+
+  /* Make 3D panels larger and more prominent */
+  #modelPanel, #worldPanel {
+    min-height: 300px;
+    flex: 1 1 300px;
+  }
+
+  /* Reduce prominence of side panels */
+  .oracle-console,
+  .panel:not(#modelPanel):not(#worldPanel):not(.top-bar) {
+    max-width: 280px;
   }
   .panel-header {
     display: flex;
@@ -527,7 +596,7 @@
     </div>
   </div>
 
-  <!-- Left: Oracle Console -->
+  <!-- LEFT PANEL: Oracle Console -->
   <div class="panel oracle-console" id="oracleConsole">
     <div class="panel-header">
       <span>Oracle Console</span>
@@ -575,39 +644,40 @@
     </div>
   </div>
 
-  <!-- Center: Attractor Map + Weave -->
-  <div class="panel">
-    <div class="panel-header">
-      <span>Attractor Map</span>
-      <span class="badge" id="currentHexBadge">#1 Qian</span>
-    </div>
-    <div class="hex-grid" id="hexGrid"></div>
-    <div class="map-legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-gold)"></div>Sovereign (10)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Boundary (7)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-teal)"></div>Transformer (35)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-void)"></div>Dissipator (12)</div>
+  <!-- CENTER: MAIN 3D VISUALIZATION (PRIMARY FOCUS) -->
+  <div class="panel" id="main3dView" style="display: grid; grid-template-rows: 1fr 1fr; gap: 1px;">
+    <!-- Model: GLB avatar (top half) -->
+    <div class="panel compact" id="modelPanel">
+      <div class="panel-header">
+        <span>Model Patch</span>
+        <span class="badge" id="modelStatus">Avatar: load pending</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Pinned asset: 1,50,1,1.glb</div>
+      <div style="background:#000;border:1px solid var(--border);height:100%;overflow:hidden;display:flex;flex-direction:column">
+        <div style="font-size:10px;color:var(--text-dim);text-align:center;padding:2px">Shadow Oracle Model</div>
+        <div style="flex:1" id="modelBox">
+          <canvas id="modelCanvas" width="360" height="220" style="width:100%;height:100%;display:block"></canvas>
+        </div>
+      </div>
     </div>
 
-    <div class="panel-header" style="margin-top:16px">
-      <span>Weave Engine</span>
-      <span class="badge" id="phaseBadge">VOID</span>
-    </div>
-    <div class="phase-tracker" id="phaseTracker">
-      <div class="phase-step" data-phase="void">Void</div>
-      <div class="phase-step" data-phase="shadow">Shadow</div>
-      <div class="phase-step" data-phase="vortex">Vortex</div>
-      <div class="phase-step" data-phase="governor">Governor</div>
-      <div class="phase-step" data-phase="collapse">Collapse</div>
-    </div>
-    <div id="weaveMetrics" style="margin-top:8px;font-size:10px;color:var(--text-dim)">
-      void_entropy: <span id="voidEntropy">0.999</span> |
-      causal_confidence: <span id="causalConfidence">0.000</span> |
-      phase_multiplier: <span id="phaseMultiplier">1.000</span>
+    <!-- World: land (bottom half) -->
+    <div class="panel compact" id="worldPanel">
+      <div class="panel-header">
+        <span>World Patch</span>
+        <span class="badge" id="worldStatus">Land: load pending</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Pinned sector: x2064 y3456</div>
+      <div style="background:#000;border:1px solid var(--border);height:100%;overflow:hidden;display:flex;flex-direction:column">
+        <div style="font-size:10px;color:var(--text-dim);text-align:center;padding:2px">Daemonheim Terrain</div>
+        <div style="flex:1" id="landBox">
+          <canvas id="landCanvas" width="360" height="220" style="width:100%;height:100%;display:block"></canvas>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Right: System State + Persona -->
+  <!-- RIGHT PANEL: System State + Persona -->
   <div class="panel">
     <div class="panel-header">
       <span>System State</span>
@@ -685,7 +755,7 @@
     </div>
   </div>
 
-  <!-- Bottom Left: Thread Monitor -->
+  <!-- BOTTOM LEFT: Thread Monitor -->
   <div class="panel compact">
     <div class="panel-header">
       <span>Thread Monitor</span>
@@ -708,66 +778,289 @@
     </table>
   </div>
 
-  <!-- Bottom Center: Crisis Monitor -->
-  <div class="panel compact">
+  <!-- BOTTOM CENTER: Attractor Map + Weave (moved from center) -->
+  <div class="panel">
     <div class="panel-header">
-      <span>Crisis Monitor</span>
-      <span class="badge" id="crisisBadge" style="background:var(--border);color:var(--text-dim)">LEVEL 0</span>
+      <span>Attractor Map</span>
+      <span class="badge" id="currentHexBadge">#1 Qian</span>
     </div>
-    <div id="crisisPanel" style="font-size:11px;color:var(--text-dim)">
-      <div style="margin-bottom:8px">No active crises. System operating within normal parameters.</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div style="background:var(--bg);padding:8px;border-radius:4px">
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Shell Distance</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="shellDistance">2</div>
-        </div>
-        <div style="background:var(--bg);padding:8px;border-radius:4px">
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Projected Shell</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="projectedShell">2</div>
-        </div>
-      </div>
-      <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div style="background:var(--bg);padding:8px;border-radius:4px">
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Void Reentry</div>
-          <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="voidReentry">0</div>
-        </div>
-        <div style="background:var(--bg);padding:8px;border-radius:4px">
-          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Crisis Count</div>
-          <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="crisisCount">0</div>
-        </div>
-      </div>
+    <div class="hex-grid" id="hexGrid"></div>
+    <div class="map-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-gold)"></div>Sovereign (10)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Boundary (7)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-teal)"></div>Transformer (35)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-void)"></div>Dissipator (12)</div>
+    </div>
+
+    <div class="panel-header" style="margin-top:16px">
+      <span>Weave Engine</span>
+      <span class="badge" id="phaseBadge">VOID</span>
+    </div>
+    <div class="phase-tracker" id="phaseTracker">
+      <div class="phase-step" data-phase="void">Void</div>
+      <div class="phase-step" data-phase="shadow">Shadow</div>
+      <div class="phase-step" data-phase="vortex">Vortex</div>
+      <div class="phase-step" data-phase="governor">Governor</div>
+      <div class="phase-step" data-phase="collapse">Collapse</div>
+    </div>
+    <div id="weaveMetrics" style="margin-top:8px;font-size:10px;color:var(--text-dim)">
+      void_entropy: <span id="voidEntropy">0.999</span> |
+      causal_confidence: <span id="causalConfidence">0.000</span> |
+      phase_multiplier: <span id="phaseMultiplier">1.000</span>
     </div>
   </div>
 
-  <!-- Bottom Right: Global State -->
-  <div class="panel compact">
-    <div class="panel-header">
-      <span>Global State</span>
-      <span class="badge" id="globalModeBadge">NORMAL</span>
+  <!-- BOTTOM RIGHT: Crisis Monitor + Global State (combined) -->
+  <div class="panel" style="display:grid;grid-template-columns:1fr 1fr;gap:1px">
+    <!-- Crisis Monitor -->
+    <div class="panel compact">
+      <div class="panel-header">
+        <span>Crisis Monitor</span>
+        <span class="badge" id="crisisBadge" style="background:var(--border);color:var(--text-dim)">LEVEL 0</span>
+      </div>
+      <div id="crisisPanel" style="font-size:11px;color:var(--text-dim)">
+        <div style="margin-bottom:8px">No active crises. System operating within normal parameters.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:var(--bg);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Shell Distance</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="shellDistance">2</div>
+          </div>
+          <div style="background:var(--bg);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Projected Shell</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="projectedShell">2</div>
+          </div>
+        </div>
+        <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="background:var(--bg);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Void Reentry</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="voidReentry">0</div>
+          </div>
+          <div style="background:var(--bg);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Crisis Count</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="crisisCount">0</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div style="background:var(--bg);padding:8px;border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Continuity</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgContinuity">1.00</div>
+
+    <!-- Global State -->
+    <div class="panel compact">
+      <div class="panel-header">
+        <span>Global State</span>
+        <span class="badge" id="globalModeBadge">NORMAL</span>
       </div>
-      <div style="background:var(--bg);padding:8px;border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Stability</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgStability">1.00</div>
-      </div>
-      <div style="background:var(--bg);padding:8px;border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Coherence</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgCoherence">1.00</div>
-      </div>
-      <div style="background:var(--bg);padding:8px;border-radius:4px">
-        <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Active Sessions</div>
-        <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="activeSessions">1</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Continuity</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgContinuity">1.00</div>
+        </div>
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Stability</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgStability">1.00</div>
+        </div>
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Coherence</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgCoherence">1.00</div>
+        </div>
+        <div style="background:var(--bg);padding:8px;border-radius:4px">
+          <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Active Sessions</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="activeSessions">1</div>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-// ─── Server Config ───────────────────────────────────────────────
+// ─── World Patch / Model Patch ───────────────────────────────────
+(() => {
+  const assetUrl = 'src/3D/3,50,1,1.glb';
+  const sector = { x: 2064, y: 3456 };
+
+  function setStatus(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function drawLand() {
+    setStatus('worldStatus', 'Land: rendering');
+    const canvas = document.getElementById('landCanvas');
+    if (!canvas) return;
+
+    // Wait for canvas to have proper size
+    if (canvas.width === 0 || canvas.height === 0) {
+      setTimeout(drawLand, 100);
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 90, canvas.width, 40);
+    ctx.strokeStyle = '#333';
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#777';
+    ctx.font = '12px monospace';
+    ctx.fillText('patch ' + sector.x + ',' + sector.y, 8, 18);
+    setStatus('worldStatus', 'Land: shown');
+  }
+
+  async function initModel() {
+    setStatus('modelStatus', 'Avatar: loading');
+    const canvas = document.getElementById('modelCanvas');
+    if (!canvas) return;
+
+    // Wait for canvas to have proper size
+    await new Promise(resolve => {
+      if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+        resolve();
+      } else {
+        const checkSize = () => {
+          if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+            resolve();
+          } else {
+            requestAnimationFrame(checkSize);
+          }
+        };
+        requestAnimationFrame(checkSize);
+      }
+    });
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+    renderer.setClearColor(0x000000, 1);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+    camera.position.set(0, 2, 5);
+    camera.lookAt(0, 0, 0);
+
+    const orbit = new OrbitControls(camera, canvas);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 0, 0);
+
+    // Add lighting
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+    hemiLight.position.set(0, 20, 0);
+    scene.add(hemiLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
+    dirLight.position.set(-3, 10, -10);
+    dirLight.castShadow = true;
+    dirLight.shadow.camera.top = 2;
+    dirLight.shadow.camera.bottom = -2;
+    dirLight.shadow.camera.left = -2;
+    dirLight.shadow.camera.right = 2;
+    dirLight.shadow.camera.near = 0.1;
+    dirLight.shadow.camera.far = 40;
+    scene.add(dirLight);
+
+    // Ground plane for reference
+    const groundGeometry = new THREE.PlaneGeometry(20, 20);
+    groundGeometry.rotateX(-Math.PI / 2);
+    const groundMaterial = new THREE.MeshStandardMaterial({
+      color: 0x222222,
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    let oracleRoot = null;
+    let mixer = null;
+    let clock = new THREE.Clock();
+
+    function tickFrame() {
+      const delta = clock.getDelta();
+
+      if (mixer) mixer.update(delta);
+
+      if (orbit) orbit.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(tickFrame);
+    }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      if (width > 0 && height > 0) {
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      }
+    });
+
+    // Load GLTF Model
+    const loader = new GLTFLoader();
+
+    try {
+      const glb = await loader.loadAsync(assetUrl);
+      const model = glb.scene || glb.scenes[0];
+
+      // Scale the model appropriately (adjust as needed)
+      model.scale.set(0.01, 0.01, 0.01); // GLB models often need scaling down
+
+      // Position the model at origin initially (we'll adjust based on our coordinate system)
+      model.position.set(0, 0, 0);
+
+      // Enable shadow casting/receiving
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      // Look for animations
+      if (glb.animations && glb.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        // Play all animations
+        glb.animations.forEach((clip) => {
+          mixer.clipAction(clip).play();
+        });
+      }
+
+      scene.add(model);
+      oracleRoot = model;
+      setStatus('modelStatus', 'Avatar: loaded');
+    } catch (err) {
+      console.warn('Could not load oracle_avatar.glb, using placeholder sphere', err);
+      setStatus('modelStatus', 'Avatar: fallback sphere');
+      const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xd4a843,
+        metalness: 0.3,
+        roughness: 0.4,
+        wireframe: true
+      });
+      const placeholder = new THREE.Mesh(geometry, material);
+      placeholder.position.set(0, 0, 0);
+      scene.add(placeholder);
+      oracleRoot = placeholder;
+    }
+
+    tickFrame();
+  }
+
+  // Helper function to check if an object is a Mesh
+  function isMesh(object) {
+    return object.isMesh !== undefined;
+  }
+
+  // Set the avatar root object (for external manipulation if needed)
+  function setAvatarRoot(root) {
+    oracleRoot = root;
+  }
+
+  window.__worldPatch = { drawLand, initModel, setAvatarRoot, assetUrl };
+})();
+</script>
+
+<script>
+// ─── Server Config ──────────────────────────────────────────────
 const BASE_URL = 'http://127.0.0.1:8787';
 const WS_URL  = 'ws://127.0.0.1:8787/ws';
 
@@ -1233,7 +1526,17 @@ function updateThreadMonitor() {
 buildHexGrid();
 connectWS();
 
-// 640ms beat
+if (window.THREE) {
+  window.__worldPatch.drawLand();
+  window.__worldPatch.initModel();
+} else {
+  window.addEventListener('three-loaded', () => {
+    window.__worldPatch.drawLand();
+    window.__worldPatch.initModel();
+  });
+}
+
+// 640ms beat — real telemetry only
 setInterval(() => {
   animateCadence();
 }, 640);

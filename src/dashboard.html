@@ -5,8 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>POG2 Sovereign Dashboard</title>
 <!-- Three.js for 3D rendering -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js"></script>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+    }
+  }
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+  window.THREE = THREE;
+  window.OrbitControls = OrbitControls;
+  window.GLTFLoader = GLTFLoader;
+  window.dispatchEvent(new Event('three-loaded'));
+</script>
 <style>
   :root {
     --bg: #0a0a0f;
@@ -858,7 +874,7 @@
 <script>
 // ─── World Patch / Model Patch ───────────────────────────────────
 (() => {
-  const assetUrl = '/src/3D/3,50,1,1.glb';
+  const assetUrl = 'src/3D/3,50,1,1.glb';
   const sector = { x: 2064, y: 3456 };
 
   function setStatus(id, text) {
@@ -890,7 +906,7 @@
     setStatus('worldStatus', 'Land: shown');
   }
 
-  async function initModel(Three) {
+  async function initModel() {
     setStatus('modelStatus', 'Avatar: loading');
     const canvas = document.getElementById('modelCanvas');
     if (!canvas) return;
@@ -911,25 +927,25 @@
       }
     });
 
-    const renderer = new Three.WebGLRenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.setClearColor(0x000000, 1);
-    const scene = new Three.Scene();
-    const camera = new Three.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
     camera.position.set(0, 2, 5);
     camera.lookAt(0, 0, 0);
 
-    const orbit = new Three.OrbitControls(camera, canvas);
+    const orbit = new OrbitControls(camera, canvas);
     orbit.enableDamping = true;
     orbit.target.set(0, 0, 0);
 
     // Add lighting
-    const hemiLight = new Three.HemisphereLight(0xffffff, 0x444444, 1.2);
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    const dirLight = new Three.DirectionalLight(0xffffff, 3.0);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
     dirLight.position.set(-3, 10, -10);
     dirLight.castShadow = true;
     dirLight.shadow.camera.top = 2;
@@ -941,20 +957,20 @@
     scene.add(dirLight);
 
     // Ground plane for reference
-    const groundGeometry = new Three.PlaneGeometry(20, 20);
+    const groundGeometry = new THREE.PlaneGeometry(20, 20);
     groundGeometry.rotateX(-Math.PI / 2);
-    const groundMaterial = new Three.MeshStandardMaterial({
+    const groundMaterial = new THREE.MeshStandardMaterial({
       color: 0x222222,
       roughness: 0.8,
       metalness: 0.2
     });
-    const ground = new Three.Mesh(groundGeometry, groundMaterial);
+    const ground = new THREE.Mesh(groundGeometry, groundMaterial);
     ground.receiveShadow = true;
     scene.add(ground);
 
     let oracleRoot = null;
     let mixer = null;
-    let clock = new Three.Clock();
+    let clock = new THREE.Clock();
 
     function tickFrame() {
       const delta = clock.getDelta();
@@ -977,8 +993,8 @@
       }
     });
 
-    // Load the Shadow Oracle GLB model
-    const loader = new Three.GLTFLoader();
+    // Load GLTF Model
+    const loader = new GLTFLoader();
 
     try {
       const glb = await loader.loadAsync(assetUrl);
@@ -992,15 +1008,15 @@
 
       // Enable shadow casting/receiving
       model.traverse((child) => {
-        if (isMesh(child)) {
+        if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
         }
       });
 
       // Look for animations
-      if (glb.animations && glb.animations.length) {
-        mixer = new Three.AnimationMixer(model);
+      if (glb.animations && glb.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
         // Play all animations
         glb.animations.forEach((clip) => {
           mixer.clipAction(clip).play();
@@ -1010,22 +1026,20 @@
       scene.add(model);
       oracleRoot = model;
       setStatus('modelStatus', 'Avatar: loaded');
-    } catch (e) {
-      console.warn('GLB load failed, using placeholder:', e);
-       // Create a simple placeholder sphere if GLB fails to load
-      const geometry = new Three.SphereGeometry(0.5, 32, 32);
-      const material = new Three.MeshStandardMaterial({
+    } catch (err) {
+      console.warn('Could not load oracle_avatar.glb, using placeholder sphere', err);
+      setStatus('modelStatus', 'Avatar: fallback sphere');
+      const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+      const material = new THREE.MeshStandardMaterial({
         color: 0xd4a843,
         metalness: 0.3,
         roughness: 0.4,
-        emissive: 0xff0000,
-        emissiveIntensity: 0.5
+        wireframe: true
       });
-      const placeholder = new Three.Mesh(geometry, material);
+      const placeholder = new THREE.Mesh(geometry, material);
       placeholder.position.set(0, 0, 0);
       scene.add(placeholder);
       oracleRoot = placeholder;
-      setStatus('modelStatus', 'Avatar: placeholder (GLB load failed)');
     }
 
     tickFrame();
@@ -1511,8 +1525,16 @@ function updateThreadMonitor() {
 // ─── Init ────────────────────────────────────────────────────────
 buildHexGrid();
 connectWS();
-drawLand();
-initModel();
+
+if (window.THREE) {
+  window.__worldPatch.drawLand();
+  window.__worldPatch.initModel();
+} else {
+  window.addEventListener('three-loaded', () => {
+    window.__worldPatch.drawLand();
+    window.__worldPatch.initModel();
+  });
+}
 
 // 640ms beat — real telemetry only
 setInterval(() => {

@@ -1,14 +1,13 @@
 /**
  * POG2 Drift Worker — Temporal Drift Engine
  * Cloudflare Workers native implementation
- * Consumes collapse events from Weave Worker via POG2_COLLAPSE_QUEUE
- * Computes 6-component drift vectors, entropy decay, forbidden-state proximity
- * Emits drift events to Continuity Worker via POG2_DRIFT_QUEUE
+ *
+ * NOTE: Hexagram binary mapping is imported from weave.ts registry
+ * to guarantee uniqueness. Do not add a second local binary map.
  */
 
 import type { Env } from '../index';
-
-// ─── Message Types ─────────────────────────────────────────────────
+import { HEXAGRAM_BINARIES } from './weave';
 
 export interface CollapseEvent {
   type: 'collapse';
@@ -47,20 +46,9 @@ export interface DriftEvent {
 }
 
 // ─── Hexagram Data ─────────────────────────────────────────────────
-
-const HEXAGRAM_ACTIONS: Record<number, 'ASSERT' | 'YIELD' | 'ADAPT' | 'WAIT'> = {
-  1: 'ASSERT', 2: 'YIELD', 3: 'ADAPT', 4: 'WAIT', 5: 'WAIT', 6: 'ASSERT',
-  7: 'ASSERT', 8: 'YIELD', 9: 'ADAPT', 10: 'ADAPT', 11: 'YIELD', 12: 'WAIT',
-  13: 'ASSERT', 14: 'ASSERT', 15: 'YIELD', 16: 'ASSERT', 17: 'ADAPT', 18: 'ADAPT',
-  19: 'ADAPT', 20: 'WAIT', 21: 'ASSERT', 22: 'YIELD', 23: 'WAIT', 24: 'ADAPT',
-  25: 'YIELD', 26: 'ASSERT', 27: 'ADAPT', 28: 'ASSERT', 29: 'WAIT', 30: 'ASSERT',
-  31: 'ADAPT', 32: 'WAIT', 33: 'WAIT', 34: 'ASSERT', 35: 'ADAPT', 36: 'YIELD',
-  37: 'ASSERT', 38: 'ADAPT', 39: 'WAIT', 40: 'ADAPT', 41: 'YIELD', 42: 'ASSERT',
-  43: 'ASSERT', 44: 'ADAPT', 45: 'YIELD', 46: 'ADAPT', 47: 'WAIT', 48: 'WAIT',
-  49: 'ASSERT', 50: 'ADAPT', 51: 'ASSERT', 52: 'WAIT', 53: 'ADAPT', 54: 'YIELD',
-  55: 'ASSERT', 56: 'ADAPT', 57: 'YIELD', 58: 'ADAPT', 59: 'WAIT', 60: 'YIELD',
-  61: 'YIELD', 62: 'ADAPT', 63: 'WAIT', 64: 'ADAPT',
-};
+//
+// Binary map removed. Consumers must use HEXAGRAM_BINARIES from weave.ts.
+// This eliminates the duplicate-entry failure mode.
 
 const SOVEREIGN_CORES = new Set([7, 10, 16, 18, 19, 53, 56, 57, 61, 62]);
 const BOUNDARY_ATTRACTORS = new Set([1, 25, 26, 30, 38, 41, 49]);
@@ -90,9 +78,6 @@ class DriftEngine {
   private entropyHistory: Map<string, number[]> = new Map(); // session_id -> entropy values
   private persistenceCounts: Map<string, number> = new Map(); // session_id -> persistence count
 
-  /**
-   * Compute drift vector between previous and current collapse
-   */
   computeDriftVector(previous: CollapseEvent | null, current: CollapseEvent): DriftEvent['drift_vector'] {
     const hexDelta = previous
       ? hammingDistance(previous.hexagram_binary, current.hexagram_binary)
@@ -125,9 +110,6 @@ class DriftEngine {
     };
   }
 
-  /**
-   * Compute entropy decay curves
-   */
   computeEntropyDecay(
     sessionId: string,
     tick: number,
@@ -160,9 +142,6 @@ class DriftEngine {
     };
   }
 
-  /**
-   * Detect forbidden-state proximity
-   */
   detectForbiddenProximity(
     currentHex: number,
     currentEntropy: number,
@@ -174,25 +153,20 @@ class DriftEngine {
     entropyProximity: number;
     projectedShell: number;
   } {
-    // Shell distance: min Hamming distance to any forbidden-adjacent hexagram
-    const currentBin = this.getHexBinary(currentHex);
+    const currentBin = HEXAGRAM_BINARIES[currentHex] || '000000';
     let shellDistance = 6;
     for (const adj of FORBIDDEN_ADJACENT) {
-      const adjBin = this.getHexBinary(adj);
+      const adjBin = HEXAGRAM_BINARIES[adj] || '000000';
       const dist = hammingDistance(currentBin, adjBin);
       shellDistance = Math.min(shellDistance, dist);
     }
 
-    // Entropy proximity
     const entropyProximity = currentEntropy;
 
-    // Trajectory projection: if drift continues, where do we land in 5 ticks?
     let projectedHex = currentHex;
     let projectedBin = currentBin;
-    // Simple projection: flip bits in direction of drift
     const driftDirection = driftVector.hex_delta > 0 ? 1 : -1;
     for (let t = 0; t < 5; t++) {
-      // Flip one bit per step in a deterministic way
       const bitToFlip = (projectedHex + t) % 6;
       const bits = projectedBin.split('');
       bits[bitToFlip] = bits[bitToFlip] === '0' ? '1' : '0';
@@ -200,11 +174,10 @@ class DriftEngine {
     }
     let projectedShell = 6;
     for (const adj of FORBIDDEN_ADJACENT) {
-      const dist = hammingDistance(projectedBin, this.getHexBinary(adj));
+      const dist = hammingDistance(projectedBin, HEXAGRAM_BINARIES[adj] || '000000');
       projectedShell = Math.min(projectedShell, dist);
     }
 
-    // Determine level
     let level: 0 | 1 | 2 | 3 = 0;
     if (shellDistance === 0 || projectedShell === 0) {
       level = 3;
@@ -217,23 +190,6 @@ class DriftEngine {
     }
 
     return { level, shellDistance, entropyProximity, projectedShell };
-  }
-
-  private getHexBinary(hexId: number): string {
-    const binaries: Record<number, string> = {
-      1: '111111', 2: '000000', 3: '100010', 4: '010001', 5: '111010', 6: '010111',
-      7: '010000', 8: '000010', 9: '111011', 10: '110111', 11: '111000', 12: '000111',
-      13: '111101', 14: '101111', 15: '001000', 16: '000100', 17: '100110', 18: '011001',
-      19: '110000', 20: '000011', 21: '100101', 22: '101001', 23: '000001', 24: '100000',
-      25: '100111', 26: '111001', 27: '100001', 28: '011110', 29: '010010', 30: '101101',
-      31: '001110', 32: '011100', 33: '001111', 34: '111100', 35: '000101', 36: '101000',
-      37: '101011', 38: '100011', 39: '010100', 40: '010100', 41: '110011', 42: '001100',
-      43: '111110', 44: '011111', 45: '000110', 46: '011000', 47: '010110', 48: '011010',
-      49: '101011', 50: '001101', 51: '100001', 52: '001011', 53: '100100', 54: '001001',
-      55: '101100', 56: '001101', 57: '010110', 58: '011011', 59: '010011', 60: '110110',
-      61: '101100', 62: '011001', 63: '101010', 64: '010101',
-    };
-    return binaries[hexId] || '000000';
   }
 }
 
@@ -248,39 +204,34 @@ export default {
       const sessionId = collapse.session_id || `orphan-${collapse.tick}`;
 
       try {
-        // Retrieve previous collapse from Sovereign KV for this session
         const prevKey = `drift:prev:${sessionId}`;
         const prevRaw = await env.POG2_SOVEREIGN.get(prevKey);
         const previous: CollapseEvent | null = prevRaw ? JSON.parse(prevRaw) : null;
 
-        // Compute drift vector
         const driftVector = engine.computeDriftVector(previous, collapse);
 
-        // Compute entropy decay
         const entropyDecay = engine.computeEntropyDecay(
           sessionId,
           collapse.tick,
           collapse.causal_confidence,
-          0, // persistence count from continuity layer
-          2, // default shell distance
+          0,
+          2,
         );
 
-        // Detect forbidden-state proximity
         const proximity = engine.detectForbiddenProximity(
           collapse.hexagram_id,
           collapse.causal_confidence,
           driftVector,
-          [], // history would be fetched from KV
+          [],
         );
 
-        // Store trajectory log to Sovereign KV
         const trajectoryEntry = {
           session_id: sessionId,
           tick: collapse.tick,
           source_hex: previous?.hexagram_id || collapse.hexagram_id,
           target_hex: collapse.hexagram_id,
           ...driftVector,
-          timestamp: Date.now(),
+          timestamp: collapse.timestamp,
         };
         const trajHash = await fullHash(JSON.stringify(trajectoryEntry));
         const trajKey = `drift:${sessionId}:${collapse.tick}:${trajHash.slice(0, 8)}`;
@@ -288,7 +239,6 @@ export default {
           metadata: { hash: trajHash, timestamp: trajectoryEntry.timestamp },
         });
 
-        // Store entropy curve to Boundary D1
         let entropyCurveId: number | null = null;
         try {
           const result = await env.POG2_BOUNDARY.prepare(
@@ -311,12 +261,10 @@ export default {
           console.error('Failed to store entropy curve:', dbErr);
         }
 
-        // Store current collapse as "previous" for next tick
         await env.POG2_SOVEREIGN.put(prevKey, JSON.stringify(collapse), {
-          expirationTtl: 86400, // 24 hours
+          expirationTtl: 86400,
         });
 
-        // Build and emit drift event
         const driftEvent: DriftEvent = {
           type: 'drift',
           tick: collapse.tick,
@@ -327,10 +275,9 @@ export default {
           crisis_level: proximity.level,
           shell_distance: proximity.shellDistance,
           projected_shell: proximity.projectedShell,
-          timestamp: Date.now(),
+          timestamp: collapse.timestamp,
         };
 
-        // If crisis level 3, emit to crisis queue immediately
         if (proximity.level === 3) {
           await env.POG2_CRISIS_QUEUE.send({
             type: 'crisis',
@@ -344,7 +291,7 @@ export default {
               darkToneAccumulation: false,
             },
             response: 'emergency_sovereign_collapse',
-            timestamp: Date.now(),
+            timestamp: collapse.timestamp,
           });
         }
 
@@ -360,7 +307,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/drift/status' && request.method === 'GET') {
-      return new Response(JSON.stringify({ status: 'eye_open', timestamp: Date.now() }), {
+      return new Response(JSON.stringify({ status: 'eye_open' }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }
