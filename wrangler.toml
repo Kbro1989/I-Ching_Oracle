@@ -15,7 +15,7 @@ class_name = "POG2WebSocketDO"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["POG2OrchestratorDO", "POG2WebSocketDO"]
+new_sqlite_classes = ["POG2OrchestratorDO", "POG2WebSocketDO"]
 
 # ─── KV Namespaces ────────────────────────────────────────────────
 
