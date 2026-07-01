@@ -1102,7 +1102,7 @@
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.setClearColor(0x000000, 1);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
     camera.position.set(0, 2, 5);
     camera.lookAt(0, 0, 0);
 
@@ -1147,6 +1147,17 @@
 
       if (mixer) mixer.update(delta);
 
+      // Tick the swirl GLB animation (model 90938 / spotanim 4361)
+      if (window.__shadowOrb && window.__shadowOrb.swirlMixer) {
+        window.__shadowOrb.swirlMixer.update(delta);
+      }
+
+      // Float the orb body (model 116821) gently
+      if (window.__shadowOrb && window.__shadowOrb.orbGroup) {
+        const time = clock.getElapsedTime();
+        window.__shadowOrb.orbGroup.position.y = Math.sin(time * 1.5) * 0.05;
+      }
+
       if (orbit) orbit.update();
       renderer.render(scene, camera);
       requestAnimationFrame(tickFrame);
@@ -1163,53 +1174,193 @@
       }
     });
 
-    // Load GLTF Model
-    const loader = new GLTFLoader();
+    // ── RS3 Buffer & HSL helpers ─────────────────────────────────
+    function HSL2RGBfloat(hsl) {
+      const [h, s, l] = hsl;
+      if (s === 0) return [l, l, l];
+      const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+      };
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      return [hue2rgb(p, q, h + 1/3), hue2rgb(p, q, h), hue2rgb(p, q, h - 1/3)];
+    }
+    function packedHSL2RGB(hsl) {
+      let h = ((hsl >> 10) & 0x3F) / 63.0;
+      const s = ((hsl >> 7) & 0x7) / 7.0;
+      const l = (hsl & 0x7F) / 127.0;
+      if (h > 0.5) h -= 1.0;
+      return HSL2RGBfloat([h, s, l]);
+    }
+    function parseBuffer(str) {
+      if (!str || typeof str !== 'string' || !str.startsWith('buffer ')) return null;
+      const match = str.match(/^buffer (\w+)(\[\d+\])?(\[\])?\{(.*)\}$/);
+      if (!match) return null;
+      const [, type, , , valuesStr] = match;
+      const values = valuesStr.split(',').map(v => v.trim()).filter(Boolean).map(Number);
+      switch (type) {
+        case 'short':  return new Int16Array(values);
+        case 'ushort': return new Uint16Array(values);
+        case 'byte':   return new Int8Array(values);
+        case 'ubyte':  return new Uint8Array(values);
+        case 'float':  return new Float32Array(values);
+        default: return null;
+      }
+    }
 
+    // ── Load GLTF Room ───────────────────────────────────────────
+    const loader = new GLTFLoader();
     try {
       const glb = await loader.loadAsync(assetUrl);
       const model = glb.scene || glb.scenes[0];
-
-      // Scale the model appropriately (adjust as needed)
-      model.scale.set(0.01, 0.01, 0.01); // GLB models often need scaling down
-
-      // Position the model at origin initially (we'll adjust based on our coordinate system)
-      model.position.set(0, 0, 0);
-
-      // Enable shadow casting/receiving
+      model.scale.set(0.01, 0.01, 0.01);
+      // Translate so the Daemonheim platform (local tile 3,23) sits at origin
+      model.position.set(-15.36, -2.08, -117.76);
       model.traverse((child) => {
+        if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+      });
+      if (glb.animations && glb.animations.length > 0) {
+        mixer = new THREE.AnimationMixer(model);
+        glb.animations.forEach(clip => mixer.clipAction(clip).play());
+      }
+      scene.add(model);
+      oracleRoot = model;
+      setStatus('modelStatus', 'Room loaded');
+    } catch (err) {
+      console.warn('Room GLB failed:', err);
+      setStatus('modelStatus', 'Room failed');
+    }
+
+    // ── Layer 1: Shadow Orb body (model 116821) from JSON buffers ─
+    const orbGroup = new THREE.Group();
+    orbGroup.name = 'shadow_orb_body';
+    orbGroup.scale.set(0.01, 0.01, 0.01);
+    orbGroup.position.set(0, 0, 0);
+    const orbMaterials = [];
+
+    try {
+      const res = await fetch('3D/shadow_orb_model.json');
+      const npcDef = await res.json();
+      const md = npcDef.model.meshdata;
+      const colorReplacements = npcDef.npc.color_replacements || [];
+
+      const posArr = parseBuffer(md.positionBuffer);
+      const normArr = parseBuffer(md.normalBuffer);
+      const uvArr   = parseBuffer(md.uvBuffer);
+      const colArr  = parseBuffer(md.vertexColours);
+      const vcount  = md.vertexCount;
+
+      // Build shared vertex attributes
+      const positions = new Float32Array(vcount * 3);
+      const normals   = normArr ? new Float32Array(vcount * 3) : null;
+      const uvs       = uvArr   ? new Float32Array(vcount * 2) : null;
+      const colors    = new Float32Array(vcount * 3);
+
+      for (let i = 0; i < vcount * 3; i++) positions[i] = posArr[i] / 512.0;
+      if (normArr) for (let i = 0; i < vcount * 3; i++) normals[i] = normArr[i] / 127.0;
+      if (uvArr)   for (let i = 0; i < vcount; i++) {
+        uvs[i*2]   = uvArr[i*2]   / 16384.0;
+        uvs[i*2+1] = uvArr[i*2+1] / 16384.0;
+      }
+      for (let i = 0; i < vcount; i++) {
+        let raw = colArr ? colArr[i] : 938;
+        for (const [from, to] of colorReplacements) if (raw === from) { raw = to; break; }
+        const [r, g, b] = packedHSL2RGB(raw);
+        colors[i*3] = r; colors[i*3+1] = g; colors[i*3+2] = b;
+      }
+
+      const posAttr  = new THREE.Float32BufferAttribute(positions, 3);
+      const colAttr  = new THREE.Float32BufferAttribute(colors, 3);
+      const normAttr = normals ? new THREE.Float32BufferAttribute(normals, 3) : null;
+      const uvAttr   = uvs    ? new THREE.Float32BufferAttribute(uvs, 2)     : null;
+
+      // Build one mesh per render group
+      for (const r of md.renders) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', posAttr);
+        geo.setAttribute('color',    colAttr);
+        if (normAttr) geo.setAttribute('normal', normAttr); else geo.computeVertexNormals();
+        if (uvAttr)   geo.setAttribute('uv', uvAttr);
+        const idx = parseBuffer(r.buf);
+        if (idx) geo.setIndex(new THREE.BufferAttribute(new Uint16Array(idx), 1));
+
+        let mat;
+        if (r.materialArgument === 1978) {
+          mat = new THREE.MeshStandardMaterial({
+            vertexColors: true, transparent: true, opacity: 0.9,
+            roughness: 0.2, metalness: 0.8,
+            emissive: new THREE.Color(0x222222),
+            side: THREE.DoubleSide
+          });
+        } else if (r.materialArgument === 1977) {
+          mat = new THREE.MeshStandardMaterial({
+            vertexColors: true, transparent: true, opacity: 0.85,
+            roughness: 0.1, metalness: 0.95,
+            emissive: new THREE.Color(0x444444),
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide
+          });
+        } else {
+          mat = new THREE.MeshBasicMaterial({
+            vertexColors: true, transparent: true, opacity: 0.95,
+            side: THREE.DoubleSide
+          });
+        }
+        orbMaterials.push(mat);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.castShadow = true;
+        orbGroup.add(mesh);
+      }
+
+      scene.add(orbGroup);
+      setStatus('modelStatus', 'Orb body loaded');
+    } catch (err) {
+      console.warn('Orb body JSON failed:', err);
+    }
+
+    // ── Layer 2: Swirl effect (spotanim 4361, model 90938) as GLB ─
+    let swirlGroup = null;
+    let swirlMixer = null;
+    try {
+      const swirlGlb = await loader.loadAsync('3D/spotanim-4361-shadow_orb.glb');
+      swirlGroup = swirlGlb.scene || swirlGlb.scenes[0];
+      swirlGroup.name = 'shadow_orb_swirl';
+      swirlGroup.scale.set(0.01, 0.01, 0.01);
+      swirlGroup.position.set(0, 0, 0);
+
+      swirlGroup.traverse((child) => {
         if (child.isMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
+          child.castShadow = false; // swirl is additive/transparent, skip shadow
+          if (child.material) {
+            child.material.transparent = true;
+            child.material.blending = THREE.AdditiveBlending;
+            child.material.side = THREE.DoubleSide;
+            child.material.depthWrite = false;
+          }
         }
       });
 
-      // Look for animations
-      if (glb.animations && glb.animations.length > 0) {
-        mixer = new THREE.AnimationMixer(model);
-        // Play all animations
-        glb.animations.forEach((clip) => {
-          mixer.clipAction(clip).play();
-        });
+      if (swirlGlb.animations && swirlGlb.animations.length > 0) {
+        swirlMixer = new THREE.AnimationMixer(swirlGroup);
+        swirlGlb.animations.forEach(clip => swirlMixer.clipAction(clip).play());
       }
 
-      scene.add(model);
-      oracleRoot = model;
-      setStatus('modelStatus', 'Avatar: loaded');
+      scene.add(swirlGroup);
+      window.__shadowOrb = {
+        orbGroup,
+        swirlGroup,
+        materials: orbMaterials,  // the 3 render materials from model 116821
+        swirlMixer
+      };
+      setStatus('modelStatus', 'Oracle ready (orb + swirl)');
     } catch (err) {
-      console.warn('Could not load oracle_avatar.glb, using placeholder sphere', err);
-      setStatus('modelStatus', 'Avatar: fallback sphere');
-      const geometry = new THREE.SphereGeometry(0.5, 32, 32);
-      const material = new THREE.MeshStandardMaterial({
-        color: 0xd4a843,
-        metalness: 0.3,
-        roughness: 0.4,
-        wireframe: true
-      });
-      const placeholder = new THREE.Mesh(geometry, material);
-      placeholder.position.set(0, 0, 0);
-      scene.add(placeholder);
-      oracleRoot = placeholder;
+      console.warn('Swirl GLB failed, orb only:', err);
+      window.__shadowOrb = { orbGroup, swirlGroup: null, materials: orbMaterials, swirlMixer: null };
+      setStatus('modelStatus', 'Oracle ready (orb only)');
     }
 
     tickFrame();
@@ -1220,12 +1371,45 @@
     return object.isMesh !== undefined;
   }
 
+  function updateShadowOrbVisuals(action, yaoLines) {
+    if (!window.__shadowOrb) return;
+    const { materials } = window.__shadowOrb;
+
+    // Action color coding
+    let color = new THREE.Color(0x888888);
+    if (action === 'ASSERT') color = new THREE.Color(0xff3333);
+    else if (action === 'YIELD') color = new THREE.Color(0x3333ff);
+    else if (action === 'ADAPT') color = new THREE.Color(0x33ff33);
+    else if (action === 'WAIT') color = new THREE.Color(0x888888);
+
+    // materials[] maps to shadow_orb_model.json renders (model 116821):
+    //   [0] = render with materialArgument 1978 (core body)
+    //   [1] = render with materialArgument 1977 (inner glow ring, additive)
+    //   [2] = void plane (materialArgument 0/basic)
+    if (materials[0] && materials[0].emissive) {
+      const coreIntensity = (yaoLines[0] ? 0.8 : 0.2) + (yaoLines[1] ? 0.8 : 0.2);
+      materials[0].emissive.copy(color).multiplyScalar(coreIntensity);
+      materials[0].color.copy(color);
+    }
+    if (materials[1] && materials[1].emissive) {
+      const ringPulse = (yaoLines[2] ? 0.6 : 0.1) + (yaoLines[3] ? 0.6 : 0.1);
+      materials[1].emissive.copy(color).multiplyScalar(ringPulse);
+      materials[1].color.copy(color);
+    }
+    if (materials[2]) {
+      const isWhite = yaoLines[4] && yaoLines[5];
+      materials[2].color.setHex(isWhite ? 0xffffff : 0x050505);
+    }
+  }
+
   // Set the avatar root object (for external manipulation if needed)
   function setAvatarRoot(root) {
     oracleRoot = root;
   }
 
-  window.__worldPatch = { drawLand, initModel, setAvatarRoot, assetUrl };
+  window.__worldPatch = { drawLand, initModel, setAvatarRoot, assetUrl, updateShadowOrbVisuals };
+
+
 })();
 </script>
 
@@ -1520,6 +1704,10 @@ function updateCollapse(msg) {
   els.actionValue.style.color = catColors[msg.category] || 'var(--accent-gold)';
   els.categoryValue.style.color = catColors[msg.category] || 'var(--accent-gold)';
   els.personaModeBadge.textContent = msg.category?.toUpperCase() || 'SOVEREIGN';
+
+  if (msg.action && window.__worldPatch && window.__worldPatch.updateShadowOrbVisuals) {
+    window.__worldPatch.updateShadowOrbVisuals(msg.action, new Array(6).fill(true));
+  }
 }
 
 function updateMetric(name, value) {
@@ -1610,6 +1798,16 @@ function showResponse(msg) {
     els.chaosProsodyBar.style.width = (p.chaos * 100) + '%';
     els.darktoneProsodyBar.style.width = (p.darkTone * 100) + '%';
     els.whimsyProsodyBar.style.width = (p.whimsy * 100) + '%';
+  }
+
+  // Update Shadow Orb visuals based on gate lines
+  if (msg.gate_lines && window.__worldPatch && window.__worldPatch.updateShadowOrbVisuals) {
+    const action = msg.action || (HEXAGRAMS[currentHex] ? HEXAGRAMS[currentHex].action : 'ASSERT');
+    const yaoLines = new Array(6).fill(false);
+    msg.gate_lines.forEach(l => {
+      yaoLines[l.position - 1] = (l.ternary !== 0);
+    });
+    window.__worldPatch.updateShadowOrbVisuals(action, yaoLines);
   }
 }
 

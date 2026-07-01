@@ -221,35 +221,35 @@ export default {
 
     // Process grouped messages
     if (tickMessages.length > 0) {
-      await WeaveWorker.queue({ queue: batch.queue, messages: tickMessages }, env, ctx);
+      await WeaveWorker.queue({ ...batch, messages: tickMessages } as any, env, ctx);
     }
     if (collapseMessages.length > 0) {
       if (batch.queue === 'pog2-collapse-events') {
-        await onCollapseEvent({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+        await onCollapseEvent({ ...batch, messages: collapseMessages } as any, env, ctx);
       } else {
-        await DriftWorker.queue({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+        await DriftWorker.queue({ ...batch, messages: collapseMessages } as any, env, ctx);
       }
     }
     if (driftMessages.length > 0) {
       if (batch.queue === 'pog2-drift-events') {
-        await onDriftEvent({ queue: batch.queue, messages: driftMessages }, env, ctx);
+        await onDriftEvent({ ...batch, messages: driftMessages } as any, env, ctx);
       } else {
-        await ContinuityWorker.queue({ queue: batch.queue, messages: driftMessages }, env, ctx);
+        await ContinuityWorker.queue({ ...batch, messages: driftMessages } as any, env, ctx);
       }
     }
     if (continuityMessages.length > 0) {
       if (batch.queue === 'pog2-continuity-events') {
-        await onContinuityEvent({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+        await onContinuityEvent({ ...batch, messages: continuityMessages } as any, env, ctx);
       } else {
-        await PersonaWorker.queue({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+        await PersonaWorker.queue({ ...batch, messages: continuityMessages } as any, env, ctx);
       }
     }
     if (crisisMessages.length > 0) {
-      await onCrisisEvent({ queue: batch.queue, messages: crisisMessages }, env, ctx);
+      await onCrisisEvent({ ...batch, messages: crisisMessages } as any, env, ctx);
     }
     if (personaOutputMessages.length > 0) {
       if (batch.queue === 'pog2-persona-outputs') {
-        await onPersonaOutput({ queue: batch.queue, messages: personaOutputMessages }, env, ctx);
+        await onPersonaOutput({ ...batch, messages: personaOutputMessages } as any, env, ctx);
       } else {
         for (const msg of personaOutputMessages) msg.ack();
       }

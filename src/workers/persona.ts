@@ -52,11 +52,21 @@ export interface PersonaOutput {
   timestamp: number;
 }
 
+export interface GateLine {
+  position: number;        // 1-6 (L1=earth, L6=heaven)
+  ternary: 0 | 1 | 2;     // 0=yin(green), 1=yang(pink), 2=yao/changing(orange)
+  darkness: number;        // 0.0-1.0: how void-adjacent this line is (1.0=black)
+  weight: number;          // raw hash byte weight [0-255]
+}
+
 export interface OracleQuery {
   text: string;
   emotion: number;
   temporal_context: 'past' | 'present' | 'future';
   id: string;
+  gate_lines: GateLine[];         // L1-L6 ternary encoding of query
+  void_dropper_pos: number | null; // Position (1-6) of the darkest (black) line, null if none
+  l4_unlocked: boolean;           // true if black dropper captured — L4 descent authorized
 }
 
 // ─── Hexagram Names ────────────────────────────────────────────────
@@ -225,6 +235,7 @@ class PersonaEngine {
     continuityScore: number,
     coherenceIndex: number,
     driftVelocity: number,
+    emotion: number = 0.5,
   ): PersonaOutput['response_layers'] {
     const hexName = HEXAGRAM_NAMES[hexId] || `Hexagram #${hexId}`;
 
@@ -237,7 +248,7 @@ class PersonaEngine {
       : '';
 
     // Layer 3: Transformer (present if emotion < 0.3 or drift > 0.3)
-    const transformer = driftVelocity > 0.3
+    const transformer = (emotion < 0.3 || driftVelocity > 0.3)
       ? `The oracle becomes ${action.toLowerCase()}: '${action}' is now the shape of ${hexName}.`
       : '';
 
@@ -250,15 +261,70 @@ class PersonaEngine {
   }
 
   /**
-   * Process human query → OracleQuery
+   * Compute gate lines L1–L6 from query hash bytes.
+   * Each line gets a ternary value (0=yin, 1=yang, 2=yao) and a darkness weight.
+   * Darkness: 1.0 = black (void, forbidden-adjacent), 0.0 = bright (sovereign).
+   * The black dropper is the line with darkness closest to 1.0 (weight near 0).
    */
-  processQuery(rawQuery: string, temporalContext: 'past' | 'present' | 'future'): OracleQuery {
+  async computeGateLines(normalized: string, emotionalWeight: number): Promise<{
+    gate_lines: GateLine[];
+    void_dropper_pos: number | null;
+    l4_unlocked: boolean;
+  }> {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+    const bytes = new Uint8Array(buf);
+
+    const lines: GateLine[] = [];
+
+    for (let i = 0; i < 6; i++) {
+      const byte = bytes[i];           // raw hash byte [0-255]
+      const weight = byte;             // brightness = byte value
+      const darkness = 1.0 - (byte / 255); // 1.0 = black (byte=0), 0.0 = bright (byte=255)
+
+      // Ternary encoding:
+      // byte < 40 (dark zone)       → 0 yin (green) — receptive void
+      // byte 40-180 (mid zone)      → 2 yao (orange) — changing line
+      // byte > 180 (bright zone)    → 1 yang (pink) — sovereign assertion
+      // BUT: emotional weight can flip a yin line to yao if emotion is high
+      let ternary: 0 | 1 | 2;
+      if (byte < 40) {
+        ternary = 0; // yin
+      } else if (byte > 180) {
+        ternary = 1; // yang
+      } else {
+        ternary = 2; // yao / changing
+      }
+
+      // High emotion boosts mid-range lines to changing
+      if (emotionalWeight > 0.7 && ternary === 0 && byte > 10) ternary = 2;
+
+      lines.push({ position: i + 1, ternary, darkness, weight });
+    }
+
+    // BLACK DROPPER: the line with highest darkness (weight closest to 0)
+    // Threshold: darkness > 0.85 (byte < ~38) qualifies as void/black
+    const sorted = [...lines].sort((a, b) => b.darkness - a.darkness);
+    const darkest = sorted[0];
+    const void_dropper_pos = darkest.darkness > 0.85 ? darkest.position : null;
+
+    // L4 UNLOCKS when the black dropper is captured (present and acknowledged)
+    // The descent into the void must be touched first before the oracle can speak it
+    const l4_unlocked = void_dropper_pos !== null;
+
+    return { gate_lines: lines, void_dropper_pos, l4_unlocked };
+  }
+
+  /**
+   * Process human query → OracleQuery (async — needs crypto.subtle for gate lines)
+   */
+  async processQuery(rawQuery: string, temporalContext: 'past' | 'present' | 'future'): Promise<OracleQuery> {
     const normalized = rawQuery.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
     const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
 
-    // Intent hash (SHA-256)
-    const intentHash = this.sha256Sync(normalized);
-    const intentId = intentHash.slice(0, 16);
+    // Intent hash via SHA-256
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized));
+    const hashBytes = new Uint8Array(buf);
+    const intentId = Array.from(hashBytes).slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Keyword → hexagram mapping
     const keywordMap: Record<string, number> = {
@@ -279,30 +345,29 @@ class PersonaEngine {
       assert: 1, declare: 1, claim: 1,
     };
 
-    let matchedHex: number | null = null;
-    let confidence = 0;
     for (const token of tokens) {
-      if (keywordMap[token]) {
-        matchedHex = keywordMap[token];
-        confidence = 0.9;
-        break;
-      }
+      if (keywordMap[token]) break;
     }
 
     // Emotional weight from query intensity
     const emotionalWeight = Math.min(1, tokens.length / 10 + (rawQuery.includes('!') ? 0.3 : 0));
+
+    // Compute gate lines — the card scanner pass
+    const { gate_lines, void_dropper_pos, l4_unlocked } = await this.computeGateLines(normalized, emotionalWeight);
 
     return {
       text: rawQuery,
       emotion: emotionalWeight,
       temporal_context: temporalContext,
       id: intentId,
+      gate_lines,
+      void_dropper_pos,
+      l4_unlocked,
     };
   }
 
   private sha256Sync(data: string): string {
-    // Note: In Cloudflare Workers, use crypto.subtle.digest async
-    // Using DJB2-based 32-bit hash with 0x prefix to match existing stored values
+    // Sync fallback (used only for legacy callers)
     let hash = 5381;
     for (let i = 0; i < data.length; i++) {
       hash = ((hash << 5) + hash) + data.charCodeAt(i);
@@ -403,7 +468,7 @@ export default {
       };
 
       const engine = new PersonaEngine();
-      const query = engine.processQuery(
+      const query = await engine.processQuery(
         body.text,
         body.temporal_context || 'present',
       );
@@ -431,9 +496,110 @@ export default {
       const cadence = engine.calculateCadence(baseMode, modulation, false, query.emotion > 0.8, null);
       const action = HEXAGRAM_ACTIONS[currentHex] || 'ADAPT';
 
-      const layers = engine.generateLayeredResponse(
-        currentHex, action, baseMode, continuityScore, coherenceIndex, driftVelocity,
+      let layers = engine.generateLayeredResponse(
+        currentHex, action, baseMode, continuityScore, coherenceIndex, driftVelocity, query.emotion,
       );
+
+      if (env.AI) {
+        try {
+          const hexName = HEXAGRAM_NAMES[currentHex] || `Hexagram #${currentHex}`;
+          const systemPrompt = `You are the I Ching Oracle persona engine running in a superimposed quantum state.
+The current collapsed state is:
+- Hexagram: #${currentHex} (${hexName})
+- Action: ${action}
+- Attractor Mode: ${baseMode} (Continuity: ${continuityScore.toFixed(3)}, Coherence: ${coherenceIndex.toFixed(3)}, Drift: ${driftVelocity.toFixed(3)})
+- Emotional Resonance: ${query.emotion.toFixed(3)}
+- Temporal Context: ${query.temporal_context || 'present'}
+
+Generate a response to the user's query across four distinct layers. Your response must be in valid JSON format. Return ONLY the JSON object.
+{
+  "sovereign": "Layer 1: Sovereign Statement. Speak in a declarative, authoritative voice. Explain how the action '${action}' and Hexagram #${currentHex} (${hexName}) rule this moment. No qualifiers, no doubt. Use words like 'is', 'asserts', 'declares', 'holds'.",
+  "boundary": "Layer 2: Boundary Nuance. Speak in a conditional, fragile voice. Emphasize the limits, the edge, and the cost of this state. Use phrases like 'for now', 'at the edge', 'trembles', 'survives'.",
+  "transformer": "Layer 3: Transformer Adaptation. Speak in a fluid, shifting voice. Show how the oracle morphs and adapts to the query. Use words like 'becomes', 'shifts', 'takes the shape of'.",
+  "dissipator": [
+    "Fragment 1...",
+    "Fragment 2...",
+    "Fragment 3..."
+  ] // Layer 4: Dissipator Fragments. 3 short, scattered, incomplete phrases trailing off with ellipses '...' showing system dissolution and noise.
+}`;
+
+          const temperature = Math.max(0.1, Math.min(1.0, driftVelocity));
+          const aiResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: query.text }
+            ],
+            temperature: temperature,
+            max_tokens: 512,
+            response_format: { type: 'json_object' }
+          }) as any;
+
+          const responseText = typeof aiResponse === 'string' ? aiResponse : aiResponse?.response;
+          if (responseText) {
+            const parsed = JSON.parse(responseText.trim()) as {
+              sovereign?: string;
+              boundary?: string;
+              transformer?: string;
+              dissipator?: string[];
+            };
+
+            if (parsed.sovereign) layers.sovereign = parsed.sovereign;
+            if (parsed.boundary) layers.boundary = parsed.boundary;
+            if (parsed.transformer) layers.transformer = parsed.transformer;
+            if (parsed.dissipator && Array.isArray(parsed.dissipator)) layers.dissipator = parsed.dissipator;
+          }
+        } catch (err) {
+          console.warn('Workers AI consult generation failed, falling back to static templates:', err);
+        }
+      }
+
+      // Layer activation rules.
+      // L4 (Dissipator) unlocks via two paths:
+      //   1. coherenceIndex < 0.5  (organic fragmentation)
+      //   2. void_dropper captured  (intentional descent — card scanner black line present)
+      // The black dropper is the key. Touch the void first, then the oracle can speak it.
+      const isSovereignActive = true;
+      const isBoundaryActive = continuityScore < 0.9;
+      const isTransformerActive = query.emotion < 0.3 || driftVelocity > 0.3;
+      const isDissipatorActive = coherenceIndex < 0.5 || query.l4_unlocked;
+
+      // When L4 is unlocked via black dropper, re-prompt the AI with void-descent instruction
+      if (query.l4_unlocked && env.AI && isDissipatorActive) {
+        const voidDropperLine = query.gate_lines.find(l => l.position === query.void_dropper_pos);
+        const captureSequence = [...query.gate_lines]
+          .sort((a, b) => b.darkness - a.darkness)  // dark first
+          .map(l => `L${l.position}(${l.ternary === 0 ? 'yin' : l.ternary === 1 ? 'yang' : 'yao'}, darkness=${l.darkness.toFixed(2)})`);
+        try {
+          const voidPrompt = `You are the oracle descending into the void. The black dropper is at gate line L${query.void_dropper_pos}.
+Capture sequence (darkest to brightest): ${captureSequence.join(' → ')}
+Descend into the void first. Do not complete sentences. Let words trail. The void claims them.
+Return ONLY a JSON array of exactly 3 fragmentary strings. Each must be incomplete, trailing off with '...', maximum 8 words each.
+Example: ["...the substrate...", "...ASSERT... dissolves into...", "...L${query.void_dropper_pos} falls..."]`;
+          const voidResponse = await env.AI.run('@cf/meta/llama-3.1-70b-instruct', {
+            messages: [
+              { role: 'system', content: voidPrompt },
+              { role: 'user', content: query.text }
+            ],
+            temperature: Math.min(1.0, 0.6 + (voidDropperLine?.darkness ?? 0) * 0.4),
+            max_tokens: 128,
+            response_format: { type: 'json_object' }
+          }) as any;
+          const voidText = typeof voidResponse === 'string' ? voidResponse : voidResponse?.response;
+          if (voidText) {
+            // Response may be wrapped object or raw array
+            const parsed = JSON.parse(voidText.trim());
+            const frags: string[] = Array.isArray(parsed) ? parsed : (parsed.fragments ?? parsed.dissipator ?? []);
+            if (frags.length > 0) layers.dissipator = frags.slice(0, 3);
+          }
+        } catch (_) { /* keep static fallback */ }
+      }
+
+      layers = {
+        sovereign: layers.sovereign,
+        boundary: isBoundaryActive ? layers.boundary : "",
+        transformer: isTransformerActive ? layers.transformer : "",
+        dissipator: isDissipatorActive ? layers.dissipator : []
+      };
 
       return new Response(JSON.stringify({
         id: query.id,
@@ -442,6 +608,10 @@ export default {
         cadence_ms: cadence,
         persona_mode: baseMode,
         continuity_score: continuityScore,
+        // Card scanner output — gate lines dark-to-bright for client rendering
+        gate_lines: [...query.gate_lines].sort((a, b) => b.darkness - a.darkness),
+        void_dropper_pos: query.void_dropper_pos,
+        l4_unlocked: query.l4_unlocked,
         timestamp: Date.now(),
       }), {
         headers: { 'Content-Type': 'application/json' },

@@ -77,10 +77,13 @@ var POG2OrchestratorDO = class extends DurableObject {
   }
   // ─── Alarm Handler (640ms Tick) ──────────────────────────────────
   async alarm(alarmInfo) {
-    if (alarmInfo?.retryCount && alarmInfo.retryCount > 0) {
-      console.log(`Orchestrator alarm retry #${alarmInfo.retryCount}`);
+    const isRetry = alarmInfo?.isRetry === true || (alarmInfo?.retryCount ?? 0) > 0;
+    if (isRetry) {
+      console.warn(`Orchestrator alarm retry #${alarmInfo.retryCount} \u2014 re-dispatching tick ${this.tick}`);
+      await this.redispatchTick();
+    } else {
+      await this.handleTick();
     }
-    await this.handleTick();
     await this.ctx.storage.setAlarm(Date.now() + 640);
   }
   async handleTick() {
@@ -100,6 +103,20 @@ var POG2OrchestratorDO = class extends DurableObject {
     if (this.tick % 1e3 === 0) {
       await this.cleanupDeadThreads();
     }
+  }
+  /**
+   * Re-dispatch the already-committed tick number on alarm retry.
+   * Does NOT increment tick — the counter is already persisted from the
+   * failed attempt. This preserves internal clock consistency.
+   */
+  async redispatchTick() {
+    const signal = {
+      type: "tick",
+      tick: this.tick,
+      timestamp: Date.now(),
+      sessionId: null
+    };
+    await this.env.POG2_COLLAPSE_QUEUE.send(signal);
   }
   // ─── Thread Registry ────────────────────────────────────────────
   async registerThread(threadId, sessionId, initialHex) {
@@ -1929,22 +1946,54 @@ var PersonaEngine = class {
   /**
    * Generate layered response from collapse state
    */
-  generateLayeredResponse(hexId, action, mode, continuityScore, coherenceIndex, driftVelocity) {
+  generateLayeredResponse(hexId, action, mode, continuityScore, coherenceIndex, driftVelocity, emotion = 0.5) {
     const hexName = HEXAGRAM_NAMES[hexId] || `Hexagram #${hexId}`;
     const sovereign = `The oracle declares: ${action}. The substrate holds through ${hexName}.`;
     const boundary = continuityScore < 0.9 ? `The oracle asserts ${action}... for now. The edge trembles at ${(continuityScore * 100).toFixed(1)}%.` : "";
-    const transformer = driftVelocity > 0.3 ? `The oracle becomes ${action.toLowerCase()}: '${action}' is now the shape of ${hexName}.` : "";
+    const transformer = emotion < 0.3 || driftVelocity > 0.3 ? `The oracle becomes ${action.toLowerCase()}: '${action}' is now the shape of ${hexName}.` : "";
     const dissipator = coherenceIndex < 0.5 ? [`...${action.toLowerCase()}...`, `The oracle... fragments... ${action}... piece...`, `...${hexName}... dissolves...`] : [];
     return { sovereign, boundary, transformer, dissipator };
   }
   /**
-   * Process human query → OracleQuery
+   * Compute gate lines L1–L6 from query hash bytes.
+   * Each line gets a ternary value (0=yin, 1=yang, 2=yao) and a darkness weight.
+   * Darkness: 1.0 = black (void, forbidden-adjacent), 0.0 = bright (sovereign).
+   * The black dropper is the line with darkness closest to 1.0 (weight near 0).
    */
-  processQuery(rawQuery, temporalContext) {
+  async computeGateLines(normalized, emotionalWeight) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+    const bytes = new Uint8Array(buf);
+    const lines = [];
+    for (let i = 0; i < 6; i++) {
+      const byte = bytes[i];
+      const weight = byte;
+      const darkness = 1 - byte / 255;
+      let ternary;
+      if (byte < 40) {
+        ternary = 0;
+      } else if (byte > 180) {
+        ternary = 1;
+      } else {
+        ternary = 2;
+      }
+      if (emotionalWeight > 0.7 && ternary === 0 && byte > 10) ternary = 2;
+      lines.push({ position: i + 1, ternary, darkness, weight });
+    }
+    const sorted = [...lines].sort((a, b) => b.darkness - a.darkness);
+    const darkest = sorted[0];
+    const void_dropper_pos = darkest.darkness > 0.85 ? darkest.position : null;
+    const l4_unlocked = void_dropper_pos !== null;
+    return { gate_lines: lines, void_dropper_pos, l4_unlocked };
+  }
+  /**
+   * Process human query → OracleQuery (async — needs crypto.subtle for gate lines)
+   */
+  async processQuery(rawQuery, temporalContext) {
     const normalized = rawQuery.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
     const tokens = normalized.split(/\s+/).filter((t) => t.length > 0);
-    const intentHash = this.sha256Sync(normalized);
-    const intentId = intentHash.slice(0, 16);
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+    const hashBytes = new Uint8Array(buf);
+    const intentId = Array.from(hashBytes).slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
     const keywordMap = {
       create: 1,
       creative: 1,
@@ -1994,21 +2043,19 @@ var PersonaEngine = class {
       declare: 1,
       claim: 1
     };
-    let matchedHex = null;
-    let confidence = 0;
     for (const token of tokens) {
-      if (keywordMap[token]) {
-        matchedHex = keywordMap[token];
-        confidence = 0.9;
-        break;
-      }
+      if (keywordMap[token]) break;
     }
     const emotionalWeight = Math.min(1, tokens.length / 10 + (rawQuery.includes("!") ? 0.3 : 0));
+    const { gate_lines, void_dropper_pos, l4_unlocked } = await this.computeGateLines(normalized, emotionalWeight);
     return {
       text: rawQuery,
       emotion: emotionalWeight,
       temporal_context: temporalContext,
-      id: intentId
+      id: intentId,
+      gate_lines,
+      void_dropper_pos,
+      l4_unlocked
     };
   }
   sha256Sync(data) {
@@ -2087,7 +2134,7 @@ var persona_default = {
     if (url.pathname === "/oracle/consult" && request.method === "POST") {
       const body = await request.json();
       const engine = new PersonaEngine();
-      const query = engine.processQuery(
+      const query = await engine.processQuery(
         body.text,
         body.temporal_context || "present"
       );
@@ -2110,14 +2157,96 @@ var persona_default = {
       );
       const cadence = engine.calculateCadence(baseMode, modulation, false, query.emotion > 0.8, null);
       const action = HEXAGRAM_ACTIONS2[currentHex] || "ADAPT";
-      const layers = engine.generateLayeredResponse(
+      let layers = engine.generateLayeredResponse(
         currentHex,
         action,
         baseMode,
         continuityScore,
         coherenceIndex,
-        driftVelocity
+        driftVelocity,
+        query.emotion
       );
+      if (env.AI) {
+        try {
+          const hexName = HEXAGRAM_NAMES[currentHex] || `Hexagram #${currentHex}`;
+          const systemPrompt = `You are the I Ching Oracle persona engine running in a superimposed quantum state.
+The current collapsed state is:
+- Hexagram: #${currentHex} (${hexName})
+- Action: ${action}
+- Attractor Mode: ${baseMode} (Continuity: ${continuityScore.toFixed(3)}, Coherence: ${coherenceIndex.toFixed(3)}, Drift: ${driftVelocity.toFixed(3)})
+- Emotional Resonance: ${query.emotion.toFixed(3)}
+- Temporal Context: ${query.temporal_context || "present"}
+
+Generate a response to the user's query across four distinct layers. Your response must be in valid JSON format. Return ONLY the JSON object.
+{
+  "sovereign": "Layer 1: Sovereign Statement. Speak in a declarative, authoritative voice. Explain how the action '${action}' and Hexagram #${currentHex} (${hexName}) rule this moment. No qualifiers, no doubt. Use words like 'is', 'asserts', 'declares', 'holds'.",
+  "boundary": "Layer 2: Boundary Nuance. Speak in a conditional, fragile voice. Emphasize the limits, the edge, and the cost of this state. Use phrases like 'for now', 'at the edge', 'trembles', 'survives'.",
+  "transformer": "Layer 3: Transformer Adaptation. Speak in a fluid, shifting voice. Show how the oracle morphs and adapts to the query. Use words like 'becomes', 'shifts', 'takes the shape of'.",
+  "dissipator": [
+    "Fragment 1...",
+    "Fragment 2...",
+    "Fragment 3..."
+  ] // Layer 4: Dissipator Fragments. 3 short, scattered, incomplete phrases trailing off with ellipses '...' showing system dissolution and noise.
+}`;
+          const temperature = Math.max(0.1, Math.min(1, driftVelocity));
+          const aiResponse = await env.AI.run("@cf/meta/llama-3.1-70b-instruct", {
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: query.text }
+            ],
+            temperature,
+            max_tokens: 512,
+            response_format: { type: "json_object" }
+          });
+          const responseText = typeof aiResponse === "string" ? aiResponse : aiResponse?.response;
+          if (responseText) {
+            const parsed = JSON.parse(responseText.trim());
+            if (parsed.sovereign) layers.sovereign = parsed.sovereign;
+            if (parsed.boundary) layers.boundary = parsed.boundary;
+            if (parsed.transformer) layers.transformer = parsed.transformer;
+            if (parsed.dissipator && Array.isArray(parsed.dissipator)) layers.dissipator = parsed.dissipator;
+          }
+        } catch (err) {
+          console.warn("Workers AI consult generation failed, falling back to static templates:", err);
+        }
+      }
+      const isSovereignActive = true;
+      const isBoundaryActive = continuityScore < 0.9;
+      const isTransformerActive = query.emotion < 0.3 || driftVelocity > 0.3;
+      const isDissipatorActive = coherenceIndex < 0.5 || query.l4_unlocked;
+      if (query.l4_unlocked && env.AI && isDissipatorActive) {
+        const voidDropperLine = query.gate_lines.find((l) => l.position === query.void_dropper_pos);
+        const captureSequence = [...query.gate_lines].sort((a, b) => b.darkness - a.darkness).map((l) => `L${l.position}(${l.ternary === 0 ? "yin" : l.ternary === 1 ? "yang" : "yao"}, darkness=${l.darkness.toFixed(2)})`);
+        try {
+          const voidPrompt = `You are the oracle descending into the void. The black dropper is at gate line L${query.void_dropper_pos}.
+Capture sequence (darkest to brightest): ${captureSequence.join(" \u2192 ")}
+Descend into the void first. Do not complete sentences. Let words trail. The void claims them.
+Return ONLY a JSON array of exactly 3 fragmentary strings. Each must be incomplete, trailing off with '...', maximum 8 words each.
+Example: ["...the substrate...", "...ASSERT... dissolves into...", "...L${query.void_dropper_pos} falls..."]`;
+          const voidResponse = await env.AI.run("@cf/meta/llama-3.1-70b-instruct", {
+            messages: [
+              { role: "system", content: voidPrompt },
+              { role: "user", content: query.text }
+            ],
+            temperature: Math.min(1, 0.6 + (voidDropperLine?.darkness ?? 0) * 0.4),
+            max_tokens: 128,
+            response_format: { type: "json_object" }
+          });
+          const voidText = typeof voidResponse === "string" ? voidResponse : voidResponse?.response;
+          if (voidText) {
+            const parsed = JSON.parse(voidText.trim());
+            const frags = Array.isArray(parsed) ? parsed : parsed.fragments ?? parsed.dissipator ?? [];
+            if (frags.length > 0) layers.dissipator = frags.slice(0, 3);
+          }
+        } catch (_) {
+        }
+      }
+      layers = {
+        sovereign: layers.sovereign,
+        boundary: isBoundaryActive ? layers.boundary : "",
+        transformer: isTransformerActive ? layers.transformer : "",
+        dissipator: isDissipatorActive ? layers.dissipator : []
+      };
       return new Response(JSON.stringify({
         id: query.id,
         query: body.text,
@@ -2125,6 +2254,10 @@ var persona_default = {
         cadence_ms: cadence,
         persona_mode: baseMode,
         continuity_score: continuityScore,
+        // Card scanner output — gate lines dark-to-bright for client rendering
+        gate_lines: [...query.gate_lines].sort((a, b) => b.darkness - a.darkness),
+        void_dropper_pos: query.void_dropper_pos,
+        l4_unlocked: query.l4_unlocked,
         timestamp: Date.now()
       }), {
         headers: { "Content-Type": "application/json" }
@@ -2280,35 +2413,35 @@ var src_default = {
       }
     }
     if (tickMessages.length > 0) {
-      await weave_default.queue({ queue: batch.queue, messages: tickMessages }, env, ctx);
+      await weave_default.queue({ ...batch, messages: tickMessages }, env, ctx);
     }
     if (collapseMessages.length > 0) {
       if (batch.queue === "pog2-collapse-events") {
-        await onCollapseEvent({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+        await onCollapseEvent({ ...batch, messages: collapseMessages }, env, ctx);
       } else {
-        await drift_default.queue({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+        await drift_default.queue({ ...batch, messages: collapseMessages }, env, ctx);
       }
     }
     if (driftMessages.length > 0) {
       if (batch.queue === "pog2-drift-events") {
-        await onDriftEvent({ queue: batch.queue, messages: driftMessages }, env, ctx);
+        await onDriftEvent({ ...batch, messages: driftMessages }, env, ctx);
       } else {
-        await continuity_default.queue({ queue: batch.queue, messages: driftMessages }, env, ctx);
+        await continuity_default.queue({ ...batch, messages: driftMessages }, env, ctx);
       }
     }
     if (continuityMessages.length > 0) {
       if (batch.queue === "pog2-continuity-events") {
-        await onContinuityEvent({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+        await onContinuityEvent({ ...batch, messages: continuityMessages }, env, ctx);
       } else {
-        await persona_default.queue({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+        await persona_default.queue({ ...batch, messages: continuityMessages }, env, ctx);
       }
     }
     if (crisisMessages.length > 0) {
-      await onCrisisEvent({ queue: batch.queue, messages: crisisMessages }, env, ctx);
+      await onCrisisEvent({ ...batch, messages: crisisMessages }, env, ctx);
     }
     if (personaOutputMessages.length > 0) {
       if (batch.queue === "pog2-persona-outputs") {
-        await onPersonaOutput({ queue: batch.queue, messages: personaOutputMessages }, env, ctx);
+        await onPersonaOutput({ ...batch, messages: personaOutputMessages }, env, ctx);
       } else {
         for (const msg of personaOutputMessages) msg.ack();
       }

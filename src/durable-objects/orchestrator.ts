@@ -123,11 +123,17 @@ await this.ctx.storage.setAlarm(Date.now() + 640);
   // ─── Alarm Handler (640ms Tick) ──────────────────────────────────
 
   async alarm(alarmInfo?: { retryCount: number; isRetry: boolean }): Promise<void> {
-    if (alarmInfo?.retryCount && alarmInfo.retryCount > 0) {
-      console.log(`Orchestrator alarm retry #${alarmInfo.retryCount}`);
-    }
+    const isRetry = alarmInfo?.isRetry === true || (alarmInfo?.retryCount ?? 0) > 0;
 
-    await this.handleTick();
+    if (isRetry) {
+      // Re-dispatch the already-committed tick — do NOT increment again.
+      // The tick was persisted to storage before the previous attempt failed,
+      // so incrementing here would create a phantom tick the AI never saw.
+      console.warn(`Orchestrator alarm retry #${alarmInfo!.retryCount} — re-dispatching tick ${this.tick}`);
+      await this.redispatchTick();
+    } else {
+      await this.handleTick();
+    }
 
     // Schedule next alarm
     await this.ctx.storage.setAlarm(Date.now() + 640);
@@ -156,6 +162,21 @@ await this.ctx.storage.setAlarm(Date.now() + 640);
     if (this.tick % 1000 === 0) {
       await this.cleanupDeadThreads();
     }
+  }
+
+  /**
+   * Re-dispatch the already-committed tick number on alarm retry.
+   * Does NOT increment tick — the counter is already persisted from the
+   * failed attempt. This preserves internal clock consistency.
+   */
+  private async redispatchTick(): Promise<void> {
+    const signal: TickSignal = {
+      type: 'tick',
+      tick: this.tick,
+      timestamp: Date.now(),
+      sessionId: null,
+    };
+    await this.env.POG2_COLLAPSE_QUEUE.send(signal);
   }
 
   // ─── Thread Registry ────────────────────────────────────────────
