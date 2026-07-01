@@ -239,10 +239,11 @@
     color: var(--text-dim);
     font-family: inherit;
     font-size: 10px;
-    cursor: pointer;
+    cursor: default;
     border-radius: 3px;
     text-transform: uppercase;
     letter-spacing: 1px;
+    pointer-events: none;
   }
   .temporal-btn.active {
     background: var(--accent-gold);
@@ -607,14 +608,14 @@
       <textarea class="query-input" id="queryInput" placeholder="Consult the oracle..."></textarea>
       <div class="query-controls">
         <div class="temporal-toggle">
-          <button class="temporal-btn" data-context="past">Past</button>
-          <button class="temporal-btn active" data-context="present">Present</button>
-          <button class="temporal-btn" data-context="future">Future</button>
+          <button class="temporal-btn" id="temporalBtnPast" data-context="past">Past</button>
+          <button class="temporal-btn active" id="temporalBtnPresent" data-context="present">Present</button>
+          <button class="temporal-btn" id="temporalBtnFuture" data-context="future">Future</button>
         </div>
       </div>
-      <div class="emotion-slider">
-        <label for="emotionSlider">Emotion</label>
-        <input type="range" id="emotionSlider" min="0" max="100" value="50">
+      <div class="emotion-slider" style="opacity: 0.85;">
+        <label for="emotionSlider">Resolved Emotion</label>
+        <input type="range" id="emotionSlider" min="0" max="100" value="50" disabled style="pointer-events: none; filter: saturate(0.5); width: 100%;">
         <span class="emotion-value" id="emotionValue">0.50</span>
       </div>
       <button class="submit-btn" id="submitBtn">CONSULT</button>
@@ -624,6 +625,28 @@
       <span>Response</span>
       <span class="badge" id="cadenceBadge">640ms</span>
     </div>
+    
+    <div class="temporal-weave-section hidden" id="temporalWeaveSection" style="margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 12px; opacity: 0; transition: opacity 0.5s ease;">
+      <div class="temporal-reflections" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+        <div class="reflection-box" style="border: 1px solid var(--border); padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.02);">
+          <div style="font-size: 8px; text-transform: uppercase; color: var(--accent-amber); border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px; margin-bottom: 4px; letter-spacing: 0.5px;">Past Reflection</div>
+          <div id="pastReflectionContent" style="font-size: 10px; line-height: 1.3; color: var(--text);"></div>
+        </div>
+        <div class="reflection-box" style="border: 1px solid var(--border); padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.02);">
+          <div style="font-size: 8px; text-transform: uppercase; color: var(--accent-teal); border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px; margin-bottom: 4px; letter-spacing: 0.5px;">Present Reflection</div>
+          <div id="presentReflectionContent" style="font-size: 10px; line-height: 1.3; color: var(--text);"></div>
+        </div>
+        <div class="reflection-box" style="border: 1px solid var(--border); padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.02);">
+          <div style="font-size: 8px; text-transform: uppercase; color: var(--accent-gold); border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 2px; margin-bottom: 4px; letter-spacing: 0.5px;">Future Reflection</div>
+          <div id="futureReflectionContent" style="font-size: 10px; line-height: 1.3; color: var(--text);"></div>
+        </div>
+      </div>
+      <div class="unified-answer-box" style="border-left: 3px solid var(--accent-gold); padding-left: 8px; margin-top: 8px;">
+        <div style="font-size: 9px; font-weight: bold; color: var(--accent-gold); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">Unified Oracle Weave</div>
+        <div id="unifiedAnswerContent" style="font-size: 11px; line-height: 1.4; font-style: italic; color: var(--text);"></div>
+      </div>
+    </div>
+
     <div class="response-layers" id="responseLayers">
       <div class="layer sovereign" id="layerSovereign">
         <div class="layer-label">Sovereign</div>
@@ -1421,7 +1444,7 @@ const WS_URL  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + w
 // ─── Hexagram Data ───────────────────────────────────────────────
 const HEXAGRAMS = {
   1: { name: 'The Creative (Qian)', category: 'boundary', action: 'ASSERT', binary: '111111' },
-  2: { name: 'The Receptive', category: 'transformer', action: 'YIELD', binary: '000000' },
+  2: { name: 'The Receptive (Kun)', category: 'transformer', action: 'YIELD', binary: '000000' },
   3: { name: 'Difficulty at the Beginning', category: 'dissipator', action: 'ADAPT', binary: '100010' },
   4: { name: 'Youthful Folly', category: 'transformer', action: 'WAIT', binary: '010001' },
   5: { name: 'Waiting', category: 'dissipator', action: 'WAIT', binary: '111010' },
@@ -1577,11 +1600,6 @@ function buildHexGrid() {
     tooltip.className = 'hex-tooltip';
     tooltip.textContent = `#${i} ${hex.name}`;
     cell.appendChild(tooltip);
-
-    cell.addEventListener('click', () => {
-      currentHex = i;
-      updateHexHighlight();
-    });
 
     els.hexGrid.appendChild(cell);
   }
@@ -1811,12 +1829,56 @@ function showResponse(msg) {
   }
 }
 
-// ─── Query Submission ────────────────────────────────────────────
+// ─── Query Submission with AI-Driven Collapse Animation ──────────
+let collapseInterval = null;
+
 els.submitBtn.addEventListener('click', async () => {
   const text = els.queryInput.value.trim();
   if (!text) return;
 
+  // Clear previous response layers & temporal weave section
+  els.layerSovereign.querySelector('.layer-content').textContent = "Collapsing possibility space...";
+  els.layerBoundary.classList.add('hidden');
+  els.layerTransformer.classList.add('hidden');
+  els.layerDissipator.classList.add('hidden');
+
+  const weaveSection = document.getElementById('temporalWeaveSection');
+  weaveSection.style.opacity = '0';
+  weaveSection.classList.add('hidden');
+
   els.submitBtn.disabled = true;
+  els.queryInput.disabled = true;
+
+  // Start the physical collapse scanning animation (the 192-path scan)
+  let scanTick = 0;
+  const tempContexts = ['past', 'present', 'future'];
+  const tempBtns = {
+    past: document.getElementById('temporalBtnPast'),
+    present: document.getElementById('temporalBtnPresent'),
+    future: document.getElementById('temporalBtnFuture')
+  };
+
+  collapseInterval = setInterval(() => {
+    // 1. Scan hexagram grid randomly
+    const randomHex = Math.floor(Math.random() * 64) + 1;
+    document.querySelectorAll('.hex-cell').forEach(cell => {
+      cell.classList.toggle('current', parseInt(cell.dataset.id) === randomHex);
+    });
+    els.currentHexBadge.textContent = `#${randomHex} Collapsing...`;
+
+    // 2. Scan temporal points
+    const currentTemp = tempContexts[scanTick % 3];
+    tempContexts.forEach(c => {
+      if (tempBtns[c]) tempBtns[c].classList.toggle('active', c === currentTemp);
+    });
+
+    // 3. Oscillate emotional slider weight
+    const waveVal = Math.floor(50 + Math.sin(scanTick * 0.4) * 35);
+    els.emotionSlider.value = waveVal;
+    els.emotionValue.textContent = (waveVal / 100).toFixed(2);
+
+    scanTick++;
+  }, 60);
 
   try {
     const response = await fetch(BASE_URL + '/oracle/consult', {
@@ -1824,18 +1886,55 @@ els.submitBtn.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text,
-        emotion: emotionWeight,
-        temporal_context: temporalContext,
         session_id: sessionId,
       }),
     });
 
     const data = await response.json();
+
+    // End scanning animation
+    clearInterval(collapseInterval);
+    collapseInterval = null;
+
+    // Resolve UI to the AI's collapsed outcome
+    currentHex = data.collapsed_hexagram || currentHex;
+    updateHexHighlight();
+
+    // Set dominant temporal context
+    tempContexts.forEach(c => {
+      if (tempBtns[c]) tempBtns[c].classList.toggle('active', c === data.temporal_context);
+    });
+    temporalContext = data.temporal_context;
+
+    // Set resolved emotional weight (smoothly set slider)
+    const resolvedWeight = data.emotional_weight !== undefined ? data.emotional_weight : 0.5;
+    els.emotionSlider.value = Math.floor(resolvedWeight * 100);
+    els.emotionValue.textContent = resolvedWeight.toFixed(2);
+    emotionWeight = resolvedWeight;
+
+    // Populate temporal reflections & unified answer
+    document.getElementById('pastReflectionContent').textContent = data.past_reflection || '';
+    document.getElementById('presentReflectionContent').textContent = data.present_reflection || '';
+    document.getElementById('futureReflectionContent').textContent = data.future_reflection || '';
+    document.getElementById('unifiedAnswerContent').textContent = data.answer || '';
+
+    // Animate fade in of the temporal weave
+    weaveSection.classList.remove('hidden');
+    setTimeout(() => {
+      weaveSection.style.opacity = '1';
+    }, 50);
+
+    // Render response layers
     showResponse(data);
+
   } catch (err) {
-    console.error('Query failed:', err);
+    console.error('Collapse consultation failed:', err);
+    clearInterval(collapseInterval);
+    collapseInterval = null;
+    els.layerSovereign.querySelector('.layer-content').textContent = "Consultation failed. The channel is closed.";
   } finally {
     els.submitBtn.disabled = false;
+    els.queryInput.disabled = false;
   }
 });
 
@@ -1844,21 +1943,6 @@ els.queryInput.addEventListener('keydown', (e) => {
     e.preventDefault();
     els.submitBtn.click();
   }
-});
-
-// ─── Temporal Toggle ─────────────────────────────────────────────
-document.querySelectorAll('.temporal-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.temporal-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    temporalContext = btn.dataset.context;
-  });
-});
-
-// ─── Emotion Slider ──────────────────────────────────────────────
-els.emotionSlider.addEventListener('input', (e) => {
-  emotionWeight = parseInt(e.target.value) / 100;
-  els.emotionValue.textContent = emotionWeight.toFixed(2);
 });
 
 // ─── Live Thread Monitor — polls /admin/threads every 640ms ─────

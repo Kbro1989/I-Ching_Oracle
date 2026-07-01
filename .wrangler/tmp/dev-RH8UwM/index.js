@@ -1860,6 +1860,72 @@ var HEXAGRAM_ACTIONS2 = {
   63: "WAIT",
   64: "ADAPT"
 };
+var HEXAGRAM_CATEGORIES = {
+  1: "boundary",
+  2: "transformer",
+  3: "dissipator",
+  4: "transformer",
+  5: "dissipator",
+  6: "transformer",
+  7: "sovereign",
+  8: "transformer",
+  9: "dissipator",
+  10: "sovereign",
+  11: "transformer",
+  12: "transformer",
+  13: "transformer",
+  14: "dissipator",
+  15: "dissipator",
+  16: "sovereign",
+  17: "dissipator",
+  18: "sovereign",
+  19: "sovereign",
+  20: "transformer",
+  21: "transformer",
+  22: "dissipator",
+  23: "dissipator",
+  24: "transformer",
+  25: "boundary",
+  26: "boundary",
+  27: "transformer",
+  28: "transformer",
+  29: "transformer",
+  30: "boundary",
+  31: "dissipator",
+  32: "transformer",
+  33: "transformer",
+  34: "transformer",
+  35: "transformer",
+  36: "transformer",
+  37: "transformer",
+  38: "boundary",
+  39: "transformer",
+  40: "transformer",
+  41: "boundary",
+  42: "transformer",
+  43: "dissipator",
+  44: "dissipator",
+  45: "transformer",
+  46: "transformer",
+  47: "transformer",
+  48: "dissipator",
+  49: "boundary",
+  50: "transformer",
+  51: "transformer",
+  52: "dissipator",
+  53: "sovereign",
+  54: "transformer",
+  55: "dissipator",
+  56: "sovereign",
+  57: "sovereign",
+  58: "transformer",
+  59: "dissipator",
+  60: "transformer",
+  61: "sovereign",
+  62: "sovereign",
+  63: "dissipator",
+  64: "transformer"
+};
 var PersonaEngine = class {
   static {
     __name(this, "PersonaEngine");
@@ -2134,10 +2200,6 @@ var persona_default = {
     if (url.pathname === "/oracle/consult" && request.method === "POST") {
       const body = await request.json();
       const engine = new PersonaEngine();
-      const query = await engine.processQuery(
-        body.text,
-        body.temporal_context || "present"
-      );
       const sessionId = body.session_id || crypto.randomUUID();
       const thread = await env.POG2_BOUNDARY.prepare(
         `SELECT * FROM identity_threads WHERE thread_id = ?1`
@@ -2146,106 +2208,125 @@ var persona_default = {
       const coherenceIndex = thread?.coherence_index || 0.7;
       const driftVelocity = thread?.drift_velocity || 0.1;
       const currentHex = thread?.current_hex || 1;
-      const baseMode = engine.selectBaseMode(continuityScore, "transformer");
-      const modulation = engine.applyModulation(
-        baseMode,
-        continuityScore,
-        driftVelocity,
-        0.1,
-        query.emotion,
-        null
-      );
-      const cadence = engine.calculateCadence(baseMode, modulation, false, query.emotion > 0.8, null);
-      const action = HEXAGRAM_ACTIONS2[currentHex] || "ADAPT";
-      let layers = engine.generateLayeredResponse(
-        currentHex,
-        action,
-        baseMode,
-        continuityScore,
-        coherenceIndex,
-        driftVelocity,
-        query.emotion
-      );
+      let aiResult = {
+        emotional_weight: Math.min(1, body.text.split(/\s+/).length / 10 + (body.text.includes("!") ? 0.3 : 0)),
+        collapsed_hexagram: Math.abs(body.text.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 64 + 1,
+        temporal_context: "present",
+        past_reflection: "In times past, your question took root in silence, waiting for resonance.",
+        present_reflection: "Now, the query creates a ripple across the current threshold, seeking collapse.",
+        future_reflection: "Ahead, the pattern dissolves into clarity once the transition is complete.",
+        sovereign: `The oracle declares: The state of the substrate holds.`,
+        boundary: `The edge trembles slightly... but the system persists for now.`,
+        transformer: `The oracle adapts and shifts to accommodate the shape of the query.`,
+        dissipator: ["...the pattern...", "...dissolves...", "...into void..."],
+        answer: "A default vibration settles the query. The oracle waits."
+      };
       if (env.AI) {
         try {
-          const hexName = HEXAGRAM_NAMES[currentHex] || `Hexagram #${currentHex}`;
           const systemPrompt = `You are the I Ching Oracle persona engine running in a superimposed quantum state.
-The current collapsed state is:
-- Hexagram: #${currentHex} (${hexName})
-- Action: ${action}
-- Attractor Mode: ${baseMode} (Continuity: ${continuityScore.toFixed(3)}, Coherence: ${coherenceIndex.toFixed(3)}, Drift: ${driftVelocity.toFixed(3)})
-- Emotional Resonance: ${query.emotion.toFixed(3)}
-- Temporal Context: ${query.temporal_context || "present"}
+The human user presents a query. Your job is to perform a "temporal-esoteric collapse" of their question:
+1. Project the query across 3 points in time (Past, Present, Future).
+2. For each point in time, visualize the full board of 64 hexagrams (192 total paths in the probability space).
+3. Evaluate the query's emotional weight (0.0 to 1.0) and tension.
+4. Collapse the entire probability space down to:
+   - 1 single resolved hexagram ID (1 to 64) that is the core thematic answer.
+   - 1 dominant temporal context ("past" | "present" | "future") that is the active anchor of the answer.
+5. Write:
+   - "past_reflection": A brief (1-2 sentences) reflection of the question's roots in the past.
+   - "present_reflection": A brief (1-2 sentences) reflection of the question's present tension.
+   - "future_reflection": A brief (1-2 sentences) reflection of the question's future potential.
+   - "sovereign": Layer 1: Sovereign Statement. Speak in a declarative, authoritative, absolute voice. Explain how the resolved hexagram rules this moment. Use words like 'is', 'asserts', 'declares', 'holds'.
+   - "boundary": Layer 2: Boundary Nuance. Speak in a conditional, fragile voice. Emphasize the limits, the edge, and the cost of this state. Use phrases like 'for now', 'at the edge', 'trembles', 'survives'.
+   - "transformer": Layer 3: Transformer Adaptation. Speak in a fluid, shifting voice. Show how the oracle morphs and adapts to the query. Use words like 'becomes', 'shifts', 'takes the shape of'.
+   - "dissipator": Layer 4: Dissipator Fragments. 3 short, incomplete, noise-trailing phrases ending with '...' (e.g. "...dissolving...").
+   - "answer": The final, unified collapsed answer summarizing the entire temporal weave.
 
-Generate a response to the user's query across four distinct layers. Your response must be in valid JSON format. Return ONLY the JSON object.
+Your response must be in valid JSON format. Return ONLY the JSON object. Do not include any other markdown formatting, backticks, or text before/after the JSON.
+JSON Schema:
 {
-  "sovereign": "Layer 1: Sovereign Statement. Speak in a declarative, authoritative voice. Explain how the action '${action}' and Hexagram #${currentHex} (${hexName}) rule this moment. No qualifiers, no doubt. Use words like 'is', 'asserts', 'declares', 'holds'.",
-  "boundary": "Layer 2: Boundary Nuance. Speak in a conditional, fragile voice. Emphasize the limits, the edge, and the cost of this state. Use phrases like 'for now', 'at the edge', 'trembles', 'survives'.",
-  "transformer": "Layer 3: Transformer Adaptation. Speak in a fluid, shifting voice. Show how the oracle morphs and adapts to the query. Use words like 'becomes', 'shifts', 'takes the shape of'.",
-  "dissipator": [
-    "Fragment 1...",
-    "Fragment 2...",
-    "Fragment 3..."
-  ] // Layer 4: Dissipator Fragments. 3 short, scattered, incomplete phrases trailing off with ellipses '...' showing system dissolution and noise.
+  "emotional_weight": number,
+  "collapsed_hexagram": number,
+  "temporal_context": "past" | "present" | "future",
+  "past_reflection": "string",
+  "present_reflection": "string",
+  "future_reflection": "string",
+  "sovereign": "string",
+  "boundary": "string",
+  "transformer": "string",
+  "dissipator": ["string", "string", "string"],
+  "answer": "string"
 }`;
-          const temperature = Math.max(0.1, Math.min(1, driftVelocity));
           const aiResponse = await env.AI.run("@cf/meta/llama-3.1-70b-instruct", {
             messages: [
               { role: "system", content: systemPrompt },
-              { role: "user", content: query.text }
+              { role: "user", content: body.text }
             ],
-            temperature,
-            max_tokens: 512,
+            temperature: 0.7,
+            max_tokens: 768,
             response_format: { type: "json_object" }
           });
           const responseText = typeof aiResponse === "string" ? aiResponse : aiResponse?.response;
           if (responseText) {
             const parsed = JSON.parse(responseText.trim());
-            if (parsed.sovereign) layers.sovereign = parsed.sovereign;
-            if (parsed.boundary) layers.boundary = parsed.boundary;
-            if (parsed.transformer) layers.transformer = parsed.transformer;
-            if (parsed.dissipator && Array.isArray(parsed.dissipator)) layers.dissipator = parsed.dissipator;
+            if (parsed.collapsed_hexagram && parsed.answer) {
+              parsed.collapsed_hexagram = Math.max(1, Math.min(64, Math.floor(Number(parsed.collapsed_hexagram))));
+              if (!["past", "present", "future"].includes(parsed.temporal_context)) {
+                parsed.temporal_context = "present";
+              }
+              parsed.emotional_weight = Math.max(0, Math.min(1, Number(parsed.emotional_weight || 0.5)));
+              aiResult = parsed;
+            }
           }
         } catch (err) {
-          console.warn("Workers AI consult generation failed, falling back to static templates:", err);
+          console.warn("Workers AI collapse query failed, falling back to deterministic calculations:", err);
         }
       }
-      const isSovereignActive = true;
+      const resolvedHex = aiResult.collapsed_hexagram;
+      const resolvedMode = HEXAGRAM_CATEGORIES[resolvedHex] || "transformer";
+      const resolvedAction = HEXAGRAM_ACTIONS2[resolvedHex] || "ADAPT";
+      try {
+        await env.POG2_BOUNDARY.prepare(
+          `INSERT INTO identity_threads (
+             thread_id, birth_tick, current_hex, dominant_category, category_history,
+             drift_velocity, stability_score, coherence_index, void_reentry_count,
+             crisis_count, last_active_tick, is_alive, version, updated_at
+           )
+           VALUES (?1, 0, ?2, ?3, '[]', 0.1, ?4, 0.8, 0, 0, 0, 1, 1, ?5)
+           ON CONFLICT(thread_id) DO UPDATE SET
+             current_hex = excluded.current_hex,
+             dominant_category = excluded.dominant_category,
+             stability_score = excluded.stability_score,
+             updated_at = excluded.updated_at`
+        ).bind(
+          sessionId,
+          resolvedHex,
+          resolvedMode,
+          1 - aiResult.emotional_weight * 0.5,
+          // map emotional weight to stability
+          Date.now()
+        ).run();
+      } catch (dbErr) {
+        console.warn("Failed to update thread state in D1:", dbErr);
+      }
+      const query = await engine.processQuery(body.text, aiResult.temporal_context);
+      const baseMode = engine.selectBaseMode(continuityScore, resolvedMode);
+      const modulation = engine.applyModulation(
+        baseMode,
+        continuityScore,
+        driftVelocity,
+        0.1,
+        aiResult.emotional_weight,
+        null
+      );
+      const cadence = engine.calculateCadence(baseMode, modulation, false, aiResult.emotional_weight > 0.8, null);
       const isBoundaryActive = continuityScore < 0.9;
-      const isTransformerActive = query.emotion < 0.3 || driftVelocity > 0.3;
+      const isTransformerActive = aiResult.emotional_weight < 0.3 || driftVelocity > 0.3;
       const isDissipatorActive = coherenceIndex < 0.5 || query.l4_unlocked;
-      if (query.l4_unlocked && env.AI && isDissipatorActive) {
-        const voidDropperLine = query.gate_lines.find((l) => l.position === query.void_dropper_pos);
-        const captureSequence = [...query.gate_lines].sort((a, b) => b.darkness - a.darkness).map((l) => `L${l.position}(${l.ternary === 0 ? "yin" : l.ternary === 1 ? "yang" : "yao"}, darkness=${l.darkness.toFixed(2)})`);
-        try {
-          const voidPrompt = `You are the oracle descending into the void. The black dropper is at gate line L${query.void_dropper_pos}.
-Capture sequence (darkest to brightest): ${captureSequence.join(" \u2192 ")}
-Descend into the void first. Do not complete sentences. Let words trail. The void claims them.
-Return ONLY a JSON array of exactly 3 fragmentary strings. Each must be incomplete, trailing off with '...', maximum 8 words each.
-Example: ["...the substrate...", "...ASSERT... dissolves into...", "...L${query.void_dropper_pos} falls..."]`;
-          const voidResponse = await env.AI.run("@cf/meta/llama-3.1-70b-instruct", {
-            messages: [
-              { role: "system", content: voidPrompt },
-              { role: "user", content: query.text }
-            ],
-            temperature: Math.min(1, 0.6 + (voidDropperLine?.darkness ?? 0) * 0.4),
-            max_tokens: 128,
-            response_format: { type: "json_object" }
-          });
-          const voidText = typeof voidResponse === "string" ? voidResponse : voidResponse?.response;
-          if (voidText) {
-            const parsed = JSON.parse(voidText.trim());
-            const frags = Array.isArray(parsed) ? parsed : parsed.fragments ?? parsed.dissipator ?? [];
-            if (frags.length > 0) layers.dissipator = frags.slice(0, 3);
-          }
-        } catch (_) {
-        }
-      }
-      layers = {
-        sovereign: layers.sovereign,
-        boundary: isBoundaryActive ? layers.boundary : "",
-        transformer: isTransformerActive ? layers.transformer : "",
-        dissipator: isDissipatorActive ? layers.dissipator : []
+      const layers = {
+        sovereign: aiResult.sovereign,
+        boundary: isBoundaryActive ? aiResult.boundary : "",
+        transformer: isTransformerActive ? aiResult.transformer : "",
+        dissipator: isDissipatorActive ? aiResult.dissipator || [] : []
       };
       return new Response(JSON.stringify({
         id: query.id,
@@ -2254,10 +2335,18 @@ Example: ["...the substrate...", "...ASSERT... dissolves into...", "...L${query.
         cadence_ms: cadence,
         persona_mode: baseMode,
         continuity_score: continuityScore,
-        // Card scanner output — gate lines dark-to-bright for client rendering
         gate_lines: [...query.gate_lines].sort((a, b) => b.darkness - a.darkness),
         void_dropper_pos: query.void_dropper_pos,
         l4_unlocked: query.l4_unlocked,
+        emotional_weight: aiResult.emotional_weight,
+        collapsed_hexagram: resolvedHex,
+        hexagram_name: HEXAGRAM_NAMES[resolvedHex] || `Hexagram #${resolvedHex}`,
+        hexagram_action: resolvedAction,
+        temporal_context: aiResult.temporal_context,
+        past_reflection: aiResult.past_reflection,
+        present_reflection: aiResult.present_reflection,
+        future_reflection: aiResult.future_reflection,
+        answer: aiResult.answer,
         timestamp: Date.now()
       }), {
         headers: { "Content-Type": "application/json" }
