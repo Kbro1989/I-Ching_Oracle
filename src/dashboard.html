@@ -882,27 +882,197 @@
     if (el) el.textContent = text;
   }
 
-  function drawLand() {
+  // ── Map rendering state ───────────────────────────────────────────
+  let __mapRegions = null;        // loaded from regions.json
+  let __mapRegionIndex = null;    // loaded from region_index.json
+  let __mapLocsCache = {};        // regionId -> array of {id,x,z,plane,rotation,type}
+  let __mapLoading = false;
+  let __mapOffscreenCache = {};   // regionId -> ImageData
+
+  async function loadMapData() {
+    if (__mapLoading || __mapRegions) return;
+    __mapLoading = true;
+    try {
+      const [rRes, idxRes] = await Promise.all([
+        fetch('src/3D/map/regions.json'),
+        fetch('src/3D/map/region_index.json')
+      ]);
+      const rJson = await rRes.json();
+      __mapRegions = rJson.regions || [];
+      __mapRegionIndex = await idxRes.json();
+      console.log('[map] Loaded ' + __mapRegions.length + ' regions, index size ' + __mapRegionIndex.length);
+    } catch (e) {
+      console.warn('[map] Map data not available yet:', e.message);
+    }
+    __mapLoading = false;
+  }
+
+  // Lazy-load location data for a single region
+  async function loadRegionLocs(regionId) {
+    if (__mapLocsCache[regionId] !== undefined) return __mapLocsCache[regionId];
+    if (!__mapRegionIndex || !__mapRegionIndex.includes(regionId)) {
+      __mapLocsCache[regionId] = [];
+      return [];
+    }
+    try {
+      const res = await fetch('src/3D/map/locs/locs_' + regionId + '.json');
+      const locs = await res.json();
+      __mapLocsCache[regionId] = locs;
+      return locs;
+    } catch (e) {
+      __mapLocsCache[regionId] = [];
+      return [];
+    }
+  }
+
+  // Convert world coord (worldX, worldZ) to the owning region
+  function findRegion(worldX, worldZ) {
+    if (!__mapRegions) return null;
+    return __mapRegions.find(r =>
+      worldX >= r.worldOriginX && worldX < r.worldOriginX + 64 &&
+      worldZ >= r.worldOriginZ && worldZ < r.worldOriginZ + 64
+    ) || null;
+  }
+
+  // Build a cached ImageData for a region's 64x64 tile grid
+  function getRegionImageData(region) {
+    if (__mapOffscreenCache[region.regionId]) return __mapOffscreenCache[region.regionId];
+    const img = new ImageData(64, 64);
+    const rgb = region.rgb;
+    for (let i = 0; i < 64 * 64; i++) {
+      img.data[i * 4 + 0] = rgb[i * 3 + 0];
+      img.data[i * 4 + 1] = rgb[i * 3 + 1];
+      img.data[i * 4 + 2] = rgb[i * 3 + 2];
+      img.data[i * 4 + 3] = 255;
+    }
+    __mapOffscreenCache[region.regionId] = img;
+    return img;
+  }
+
+  // Location type → color mapping (RS3 object types)
+  const LOC_COLORS = {
+    0: '#ff4444',   // Wall straight
+    1: '#ff8800',   // Wall diagonal corner
+    2: '#ffcc00',   // Wall inner corner
+    3: '#ff44ff',   // Wall outer corner
+    9: '#44ffcc',   // Wall decoration
+    10: '#44aaff',  // Interactable / scenery
+    22: '#ffffff',  // Floor decoration
+  };
+
+  async function drawLand() {
     setStatus('worldStatus', 'Land: rendering');
     const canvas = document.getElementById('landCanvas');
     if (!canvas) return;
 
-    // Wait for canvas to have proper size
     if (canvas.width === 0 || canvas.height === 0) {
       setTimeout(drawLand, 100);
       return;
     }
 
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 90, canvas.width, 40);
-    ctx.strokeStyle = '#333';
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#777';
-    ctx.font = '12px monospace';
-    ctx.fillText('patch ' + sector.x + ',' + sector.y, 8, 18);
+    const cw = canvas.width;
+    const ch = canvas.height;
+
+    // Try to load map data if not yet loaded
+    if (!__mapRegions && !__mapLoading) loadMapData().then(() => drawLand());
+
+    // Fill background
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0, 0, cw, ch);
+
+    // World position from sector (sector = mapsquare coords, each is 64 tiles)
+    const centerWorldX = (sector.x * 64) + 32;
+    const centerWorldZ = (sector.y * 64) + 32;
+
+    const TILE_PX = 4; // pixels per tile
+    const viewTilesW = Math.ceil(cw / TILE_PX) + 2;
+    const viewTilesH = Math.ceil(ch / TILE_PX) + 2;
+
+    // Screen center in tile coords
+    const screenCenterTX = centerWorldX;
+    const screenCenterTZ = centerWorldZ;
+
+    if (__mapRegions && __mapRegions.length > 0) {
+      // Draw all visible regions
+      const startTX = screenCenterTX - Math.floor(viewTilesW / 2);
+      const startTZ = screenCenterTZ - Math.floor(viewTilesH / 2);
+
+      // Temporary canvas to blit scaled tiles
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = 64;
+      tmpCanvas.height = 64;
+      const tmpCtx = tmpCanvas.getContext('2d');
+
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const rx = sector.x + dx;
+          const rz = sector.y + dz;
+          const regionId = (rx & 0x7F) | ((rz & 0x7F) << 7);
+          const region = __mapRegions.find(r => r.regionId === regionId);
+          if (!region) continue;
+
+          const imgData = getRegionImageData(region);
+          tmpCtx.putImageData(imgData, 0, 0);
+
+          // Pixel offset on canvas
+          const offX = Math.round((dx * 64 + 32 - 32) * TILE_PX + cw / 2 - 32 * TILE_PX);
+          const offZ = Math.round((dz * 64 + 32 - 32) * TILE_PX + ch / 2 - 32 * TILE_PX);
+
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(tmpCanvas, offX, offZ, 64 * TILE_PX, 64 * TILE_PX);
+        }
+      }
+
+      // Draw location dots for plane 0 (lazy-load per region)
+      for (let dz2 = -1; dz2 <= 1; dz2++) {
+        for (let dx2 = -1; dx2 <= 1; dx2++) {
+          const rx2 = sector.x + dx2;
+          const rz2 = sector.y + dz2;
+          const rid2 = (rx2 & 0x7F) | ((rz2 & 0x7F) << 7);
+          const locs = __mapLocsCache[rid2];
+          if (!locs) { loadRegionLocs(rid2).then(() => drawLand()); continue; }
+
+          const originX = rx2 * 64;
+          const originZ = rz2 * 64;
+          for (const loc of locs) {
+            if (loc.plane !== 0) continue;
+            const dTX = (originX + loc.x) - centerWorldX;
+            const dTZ = (originZ + loc.z) - centerWorldZ;
+            const px = Math.round(cw / 2 + dTX * TILE_PX);
+            const pz = Math.round(ch / 2 + dTZ * TILE_PX);
+            ctx.fillStyle = LOC_COLORS[loc.type] || '#555';
+            ctx.fillRect(px, pz, Math.max(1, TILE_PX - 1), Math.max(1, TILE_PX - 1));
+          }
+        }
+      }
+    }
+
+    // Grid overlay
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth = 1;
+    const gridStep = 16 * TILE_PX;
+    for (let x = cw % gridStep; x < cw; x += gridStep) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke();
+    }
+    for (let z = ch % gridStep; z < ch; z += gridStep) {
+      ctx.beginPath(); ctx.moveTo(0, z); ctx.lineTo(cw, z); ctx.stroke();
+    }
+
+    // Avatar crosshair at center
+    ctx.strokeStyle = '#39ff14';
+    ctx.lineWidth = 1;
+    const cx2 = Math.round(cw / 2), cy2 = Math.round(ch / 2);
+    ctx.beginPath(); ctx.moveTo(cx2 - 6, cy2); ctx.lineTo(cx2 + 6, cy2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx2, cy2 - 6); ctx.lineTo(cx2, cy2 + 6); ctx.stroke();
+
+    // HUD label
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, cw, 18);
+    ctx.fillStyle = '#aaffaa';
+    ctx.font = '10px monospace';
+    ctx.fillText('mapsq ' + sector.x + ',' + sector.y + '  world ' + centerWorldX + ',' + centerWorldZ, 4, 12);
+
     setStatus('worldStatus', 'Land: shown');
   }
 
@@ -1060,9 +1230,9 @@
 </script>
 
 <script>
-// ─── Server Config ──────────────────────────────────────────────
-const BASE_URL = 'http://127.0.0.1:8787';
-const WS_URL  = 'ws://127.0.0.1:8787/ws';
+// ─── Server Config (auto-detect from window.location) ───────────
+const BASE_URL = window.location.origin;
+const WS_URL  = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
 
 // ─── Hexagram Data ───────────────────────────────────────────────
 const HEXAGRAMS = {
@@ -1331,23 +1501,8 @@ function updateContinuity(msg) {
   els.avgStability.textContent = (msg.stability_score || 0).toFixed(2);
   els.avgCoherence.textContent = (msg.coherence_index || 0).toFixed(2);
   
-  // Prosody estimation (actual values come in response, but this keeps bars alive)
-  const mode = msg.persona_mode || 'transformer';
-  const prosody = {
-    sovereign: { coherence: 1.0, chaos: 0.0, darkTone: 0.0, whimsy: 0.0 },
-    boundary: { coherence: 0.7, chaos: 0.3, darkTone: 0.2, whimsy: 0.1 },
-    transformer: { coherence: 0.5, chaos: 0.5, darkTone: 0.1, whimsy: 0.6 },
-    dissipator: { coherence: 0.1, chaos: 0.9, darkTone: 0.5, whimsy: 0.2 },
-  }[mode] || { coherence: 0.5, chaos: 0.5, darkTone: 0.1, whimsy: 0.6 };
-
-  els.prosodyCoherence.textContent = prosody.coherence.toFixed(2);
-  els.prosodyChaos.textContent = prosody.chaos.toFixed(2);
-  els.prosodyDarkTone.textContent = prosody.darkTone.toFixed(2);
-  els.prosodyWhimsy.textContent = prosody.whimsy.toFixed(2);
-  els.coherenceProsodyBar.style.width = (prosody.coherence * 100) + '%';
-  els.chaosProsodyBar.style.width = (prosody.chaos * 100) + '%';
-  els.darktoneProsodyBar.style.width = (prosody.darkTone * 100) + '%';
-  els.whimsyProsodyBar.style.width = (prosody.whimsy * 100) + '%';
+  // Prosody comes exclusively from the live 'response' WS message (persona engine output)
+  // Nothing estimated here — bars stay at last known values until next response arrives
 }
 
 function updateCollapse(msg) {
@@ -1443,6 +1598,19 @@ function showResponse(msg) {
 
   els.cadenceBadge.textContent = msg.cadence_ms + 'ms';
   els.cadenceValue.textContent = msg.cadence_ms + 'ms';
+
+  // Live prosody from persona engine — only source of truth
+  if (msg.prosody) {
+    const p = msg.prosody;
+    els.prosodyCoherence.textContent = p.coherence.toFixed(2);
+    els.prosodyChaos.textContent = p.chaos.toFixed(2);
+    els.prosodyDarkTone.textContent = p.darkTone.toFixed(2);
+    els.prosodyWhimsy.textContent = p.whimsy.toFixed(2);
+    els.coherenceProsodyBar.style.width = (p.coherence * 100) + '%';
+    els.chaosProsodyBar.style.width = (p.chaos * 100) + '%';
+    els.darktoneProsodyBar.style.width = (p.darkTone * 100) + '%';
+    els.whimsyProsodyBar.style.width = (p.whimsy * 100) + '%';
+  }
 }
 
 // ─── Query Submission ────────────────────────────────────────────
@@ -1495,31 +1663,71 @@ els.emotionSlider.addEventListener('input', (e) => {
   els.emotionValue.textContent = emotionWeight.toFixed(2);
 });
 
-// ─── Thread Monitor (simulated for demo) ───────────────────────
-function updateThreadMonitor() {
-  const threads = [
-    {
-      id: threadId || '—',
-      hex: currentHex,
-      category: HEXAGRAMS[currentHex].category,
-      continuity: parseFloat(els.continuityValue.textContent) || 1.0,
-      drift: parseFloat(els.driftValue.textContent) || 0,
-      status: 'active',
+// ─── Live Thread Monitor — polls /admin/threads every 640ms ─────
+async function pollThreadMonitor() {
+  try {
+    const [threadsRes, stateRes] = await Promise.all([
+      fetch(BASE_URL + '/admin/threads'),
+      fetch(BASE_URL + '/admin/state'),
+    ]);
+    const threads = await threadsRes.json();
+    const state = await stateRes.json();
+
+    // Update active sessions count
+    if (els.activeSessions && state.sessions !== undefined) {
+      els.activeSessions.textContent = state.sessions;
     }
-  ];
 
-  els.threadTableBody.innerHTML = threads.map(t => `
-    <tr>
-      <td>${t.id.slice(0, 8)}...</td>
-      <td>#${t.hex}</td>
-      <td><span style="color:var(--accent-${t.category === 'sovereign' ? 'gold' : t.category === 'boundary' ? 'amber' : t.category === 'transformer' ? 'teal' : 'void'})">${t.category}</span></td>
-      <td>${t.continuity.toFixed(3)}</td>
-      <td>${t.drift.toFixed(3)}</td>
-      <td><span class="thread-status ${t.status}">${t.status}</span></td>
-    </tr>
-  `).join('');
+    if (!Array.isArray(threads) || threads.length === 0) {
+      els.threadTableBody.innerHTML = '<tr><td colspan="8" style="opacity:0.4;text-align:center">no active threads</td></tr>';
+      els.threadCountBadge.textContent = '0 threads';
+      return;
+    }
 
-  els.threadCountBadge.textContent = threads.length + ' thread' + (threads.length !== 1 ? 's' : '');
+    const catColor = {
+      sovereign: 'var(--accent-gold)',
+      boundary: 'var(--accent-amber)',
+      transformer: 'var(--accent-teal)',
+      dissipator: 'var(--accent-void)',
+    };
+
+    els.threadTableBody.innerHTML = threads.map(t => {
+      const hex = HEXAGRAMS[t.current_hex] || { name: '?', category: 'transformer' };
+      const cat = t.dominant_category || hex.category;
+      const contScore = (t.continuity_score || 0).toFixed(3);
+      const drift = (t.drift_velocity || 0).toFixed(3);
+      const born = t.birth_tick !== undefined ? t.birth_tick : (t.created_at ? new Date(t.created_at).toISOString().slice(11,19) : '—');
+      const persistence = t.persistence_countdown !== undefined ? t.persistence_countdown + ' tk' : '—';
+      const voidRe = t.void_reentry_count !== undefined ? t.void_reentry_count : '—';
+      const crises = t.crisis_count !== undefined ? t.crisis_count : '—';
+      return `<tr>
+        <td style="font-size:10px;font-family:monospace">${String(t.thread_id).slice(0,8)}…</td>
+        <td>${born}</td>
+        <td>#${t.current_hex} <span style="font-size:9px;opacity:0.6">${hex.name}</span></td>
+        <td><span style="color:${catColor[cat] || '#888'}">${cat}</span></td>
+        <td>${contScore}</td>
+        <td>${drift}</td>
+        <td>${persistence}</td>
+        <td><span class="thread-status ${t.status || 'active'}">${t.status || 'active'}</span></td>
+        <td>${voidRe}</td>
+        <td>${crises}</td>
+      </tr>`;
+    }).join('');
+
+    const avgCont = threads.reduce((s, t) => s + (t.continuity_score || 0), 0) / threads.length;
+    const avgStab = threads.reduce((s, t) => s + (t.stability_score || 0), 0) / threads.length;
+    const avgCoh  = threads.reduce((s, t) => s + (t.coherence_index || 0), 0) / threads.length;
+    if (els.avgContinuity) els.avgContinuity.textContent = avgCont.toFixed(2);
+    if (els.avgStability)  els.avgStability.textContent  = avgStab.toFixed(2);
+    if (els.avgCoherence)  els.avgCoherence.textContent  = avgCoh.toFixed(2);
+
+    const globalMode = avgCont < 0.5 ? 'DELIBERATION' : avgCont > 0.8 ? 'EXPLORATION' : 'NORMAL';
+    if (els.globalModeBadge) els.globalModeBadge.textContent = globalMode;
+
+    els.threadCountBadge.textContent = threads.length + ' thread' + (threads.length !== 1 ? 's' : '');
+  } catch (err) {
+    console.warn('[threads] poll failed:', err.message);
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────
@@ -1536,16 +1744,15 @@ if (window.THREE) {
   });
 }
 
-// 640ms beat — real telemetry only
-setInterval(() => {
-  animateCadence();
-}, 640);
+// 640ms beat — cadence ring only, all other state from WS/REST
+setInterval(animateCadence, 640);
 
-// Phase animation (128ms per phase = 640ms total)
+// Phase animation (128ms per phase = 640ms total cycle)
 setInterval(animatePhase, 128);
 
-// Thread monitor update
-setInterval(updateThreadMonitor, 2000);
+// Live thread + system state poll on the beat
+setInterval(pollThreadMonitor, 640);
+pollThreadMonitor(); // immediate first call
 </script>
 </body>
 </html>

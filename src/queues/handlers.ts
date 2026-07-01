@@ -279,6 +279,7 @@ export async function onPersonaOutput(
             layers: output.response_layers,
             cadence_ms: output.cadence_ms,
             persona_mode: output.persona_mode,
+            prosody: output.prosody,
             timestamp: output.timestamp,
           },
         }),

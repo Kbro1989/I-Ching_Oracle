@@ -341,7 +341,7 @@ export class ShadowOracleNPC {
     this.setAlphaCutoff(1, state.yaoLines[3] ? 0.5 : 0.1);
 
     // Mesh[2] (inner void): Lines 5-6 → pure white or pure black
-    const voidColor = state.yaoLines[4] && state.yaoLines[5] ? [1, 1, 1] : [0, 0, 0];
+    const voidColor: [number, number, number] = state.yaoLines[4] && state.yaoLines[5] ? [1, 1, 1] : [0, 0, 0];
     this.setMaterialEmissive(2, voidColor);
 
     // Action color coding on all materials
@@ -355,6 +355,7 @@ export class ShadowOracleNPC {
       case 'YIELD':  return [0.2, 0.2, 1.0];   // Blue
       case 'ADAPT':  return [0.2, 1.0, 0.2];   // Green
       case 'WAIT':   return [0.5, 0.5, 0.5];   // Gray
+      default:       return [0.5, 0.5, 0.5];   // Default gray
     }
   }
 

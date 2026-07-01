@@ -37,6 +37,9 @@ export { default as PersonaWorker } from './workers/persona';
 // ─── Environment Interface ────────────────────────────────────────
 
 export interface Env {
+  // Static Assets
+  ASSETS: Fetcher;
+
   // KV Namespaces
   POG2_SOVEREIGN: KVNamespace;
   POG2_DISSIPATOR: KVNamespace;
@@ -96,7 +99,8 @@ export default {
       });
     }
 
-    if (url.pathname === '/') {
+    // API manifest (JSON metadata for /api/manifest)
+    if (url.pathname === '/api/manifest') {
       return cors(new Response(
         JSON.stringify({
           system: 'POG2 Sovereign',
@@ -145,6 +149,18 @@ export default {
       const wsId = env.POG2_WEBSOCKET.idFromName('hub');
       const wsStub = env.POG2_WEBSOCKET.get(wsId);
       return wsStub.fetch(request);
+    }
+
+    // ─── Serve static assets (Dashboard) ───────────────────────
+    // Fallback: serve dashboard.html from ASSETS binding for any other GET
+    if (env.ASSETS && request.method === 'GET') {
+      const assetResponse = await env.ASSETS.fetch(request);
+      if (assetResponse.status !== 404) {
+        return assetResponse;
+      }
+      // If asset not found, serve dashboard.html (SPA-style fallback)
+      const indexRequest = new Request(new URL('/dashboard.html', request.url), request);
+      return env.ASSETS.fetch(indexRequest);
     }
 
     return cors(new Response('Not Found', { status: 404 }));

@@ -1,15 +1,34 @@
 /**
- * POG2 Persona Worker — Oracle Persona Engine + Human-Oracle Interface
+ * POG2 Continuity Worker — Oracle Continuity Layer
  * Cloudflare Workers native implementation
- * Consumes continuity events from Continuity Worker via POG2_CONTINUITY_QUEUE
- * Synthesizes voice, generates layered responses
- * Handles human queries via HTTP POST /oracle/consult
- * Emits persona outputs to WebSocket DO via POG2_PERSONA_QUEUE
+ * Consumes drift events from Drift Worker via POG2_DRIFT_QUEUE
+ * Updates thread state, manages persistence countdown, calculates continuity score
+ * Emits continuity events to Persona Worker via POG2_CONTINUITY_QUEUE
  */
 
 import type { Env } from '../index';
 
-// ─── Message Types ─────────────────────────────────────────────────
+export interface DriftEvent {
+  type: 'drift';
+  tick: number;
+  session_id: string;
+  drift_vector: {
+    hex_delta: number;
+    action_delta: 0 | 1;
+    category_delta: 0 | 1;
+    entropy_delta: number;
+    fidelity_delta: number;
+    phase_delta: number;
+    magnitude: number;
+    direction: 'sovereign' | 'boundary' | 'transformer' | 'dissipator';
+  };
+  trajectory_log_key: string;
+  entropy_curve_id: number | null;
+  crisis_level: 0 | 1 | 2 | 3;
+  shell_distance: number;
+  projected_shell: number;
+  timestamp: number;
+}
 
 export interface ContinuityEvent {
   type: 'continuity';
@@ -30,447 +49,249 @@ export interface ContinuityEvent {
   timestamp: number;
 }
 
-export interface PersonaOutput {
-  type: 'persona_output';
-  session_id: string;
-  thread_id: string;
-  response_layers: {
-    sovereign: string;
-    boundary: string;
-    transformer: string;
-    dissipator: string[];
-  };
-  cadence_ms: number;
-  persona_mode: string;
-  consistency_score: number;
-  timestamp: number;
-}
-
-export interface OracleQuery {
-  text: string;
-  emotion: number;
-  temporal_context: 'past' | 'present' | 'future';
-  id: string;
-}
-
-// ─── Hexagram Names ────────────────────────────────────────────────
-
-const HEXAGRAM_NAMES: Record<number, string> = {
-  1: 'The Creative (Qian)', 2: 'The Receptive (Kun)', 3: 'Difficulty at the Beginning',
-  4: 'Youthful Folly', 5: 'Waiting', 6: 'Conflict',
-  7: 'The Army', 8: 'Holding Together', 9: 'Taming Power of the Small',
-  10: 'Treading', 11: 'Peace', 12: 'Standstill',
-  13: 'Fellowship with Men', 14: 'Possession in Great Measure', 15: 'Modesty',
-  16: 'Enthusiasm', 17: 'Following', 18: 'Work on Decayed',
-  19: 'Approach', 20: 'Contemplation', 21: 'Biting Through',
-  22: 'Grace', 23: 'Splitting Apart', 24: 'Return',
-  25: 'Innocence', 26: 'Taming Power of the Great', 27: 'Nourishment',
-  28: 'Preponderance of the Great', 29: 'The Abysmal', 30: 'The Clinging (Li)',
-  31: 'Influence', 32: 'Duration', 33: 'Retreat',
-  34: 'The Power of the Great', 35: 'Progress', 36: 'Darkening of the Light',
-  37: 'The Family', 38: 'Opposition', 39: 'Obstruction',
-  40: 'Deliverance', 41: 'Decrease', 42: 'Increase',
-  43: 'Breakthrough', 44: 'Coming to Meet', 45: 'Gathering Together',
-  46: 'Pushing Upward', 47: 'Oppression', 48: 'The Well',
-  49: 'Revolution', 50: 'The Cauldron', 51: 'The Arousing (Shock)',
-  52: 'Keeping Still', 53: 'Development', 54: 'The Marrying Maiden',
-  55: 'Abundance', 56: 'The Wanderer', 57: 'The Gentle (Wind)',
-  58: 'The Joyous (Lake)', 59: 'Dispersion', 60: 'Limitation',
-  61: 'Inner Truth', 62: 'Small Preponderance', 63: 'After Completion',
-  64: 'Before Completion',
-};
-
-const HEXAGRAM_ACTIONS: Record<number, string> = {
-  1: 'ASSERT', 2: 'YIELD', 3: 'ADAPT', 4: 'WAIT', 5: 'WAIT', 6: 'ASSERT',
-  7: 'ASSERT', 8: 'YIELD', 9: 'ADAPT', 10: 'ADAPT', 11: 'YIELD', 12: 'WAIT',
-  13: 'ASSERT', 14: 'ASSERT', 15: 'YIELD', 16: 'ASSERT', 17: 'ADAPT', 18: 'ADAPT',
-  19: 'ADAPT', 20: 'WAIT', 21: 'ASSERT', 22: 'YIELD', 23: 'WAIT', 24: 'ADAPT',
-  25: 'YIELD', 26: 'ASSERT', 27: 'ADAPT', 28: 'ASSERT', 29: 'WAIT', 30: 'ASSERT',
-  31: 'ADAPT', 32: 'WAIT', 33: 'WAIT', 34: 'ASSERT', 35: 'ADAPT', 36: 'YIELD',
-  37: 'ASSERT', 38: 'ADAPT', 39: 'WAIT', 40: 'ADAPT', 41: 'YIELD', 42: 'ASSERT',
-  43: 'ASSERT', 44: 'ADAPT', 45: 'YIELD', 46: 'ADAPT', 47: 'WAIT', 48: 'WAIT',
-  49: 'ASSERT', 50: 'ADAPT', 51: 'ASSERT', 52: 'WAIT', 53: 'ADAPT', 54: 'YIELD',
-  55: 'ASSERT', 56: 'ADAPT', 57: 'YIELD', 58: 'ADAPT', 59: 'WAIT', 60: 'YIELD',
-  61: 'YIELD', 62: 'ADAPT', 63: 'WAIT', 64: 'ADAPT',
-};
-
-// ─── Persona Engine ──────────────────────────────────────────────
-
-class PersonaEngine {
-  /**
-   * Select base persona mode from continuity state
-   */
-  selectBaseMode(
-    continuityScore: number,
-    attractorCategory: string,
-  ): 'sovereign' | 'boundary' | 'transformer' | 'dissipator' {
-    // Override: broken continuity forces dissipator regardless of attractor
-    if (continuityScore < 0.3) return 'dissipator';
-
-    // Map continuity ranges to modes
-    if (continuityScore >= 0.9) return 'sovereign';
-    if (continuityScore >= 0.7) return 'boundary';
-    if (continuityScore >= 0.5) return 'transformer';
-    return 'dissipator';
-  }
-
-  /**
-   * Apply voice modulation based on real-time signals
-   */
-  applyModulation(
-    baseMode: string,
-    continuityScore: number,
-    driftVelocity: number,
-    darkToneAccumulation: number,
-    emotionalWeight: number,
-    userOverride: string | null,
-  ): {
-    coherence: number;
-    chaos: number;
-    darkTone: number;
-    whimsy: number;
-  } {
-    // Base prosody per mode
-    const baseProsody: Record<string, { coherence: number; chaos: number; darkTone: number; whimsy: number }> = {
-      sovereign: { coherence: 1.0, chaos: 0.0, darkTone: 0.0, whimsy: 0.0 },
-      boundary: { coherence: 0.7, chaos: 0.3, darkTone: 0.2, whimsy: 0.1 },
-      transformer: { coherence: 0.5, chaos: 0.5, darkTone: 0.1, whimsy: 0.6 },
-      dissipator: { coherence: 0.1, chaos: 0.9, darkTone: 0.5, whimsy: 0.2 },
-    };
-
-    const base = baseProsody[baseMode] || baseProsody.transformer;
-
-    // Modulation inputs
-    const continuityMod = { coherence: continuityScore * 0.3, chaos: (1 - continuityScore) * 0.3, darkTone: 0, whimsy: 0 };
-    const driftMod = {
-      coherence: driftVelocity < 0.1 ? 0.1 : -0.2,
-      chaos: driftVelocity > 0.5 ? 0.2 : -0.1,
-      darkTone: 0,
-      whimsy: 0,
-    };
-    const darkToneMod = { coherence: 0, chaos: 0, darkTone: darkToneAccumulation * 0.2, whimsy: 0 };
-    const emotionMod = {
-      coherence: emotionalWeight > 0.8 ? 0.1 : 0,
-      chaos: emotionalWeight > 0.9 ? 0.1 : 0,
-      darkTone: emotionalWeight > 0.8 ? 0.1 : 0,
-      whimsy: emotionalWeight < 0.3 ? 0.1 : 0,
-    };
-
-    // Apply modulation formula
-    let final = {
-      coherence: base.coherence + continuityMod.coherence + driftMod.coherence + darkToneMod.coherence + emotionMod.coherence,
-      chaos: base.chaos + continuityMod.chaos + driftMod.chaos + darkToneMod.chaos + emotionMod.chaos,
-      darkTone: base.darkTone + darkToneMod.darkTone,
-      whimsy: base.whimsy + emotionMod.whimsy,
-    };
-
-    // User override (always wins)
-    if (userOverride) {
-      const overrideProsody = baseProsody[userOverride];
-      if (overrideProsody) {
-        final = {
-          coherence: final.coherence * 0.9 + overrideProsody.coherence * 0.1,
-          chaos: final.chaos * 0.9 + overrideProsody.chaos * 0.1,
-          darkTone: final.darkTone * 0.9 + overrideProsody.darkTone * 0.1,
-          whimsy: final.whimsy * 0.9 + overrideProsody.whimsy * 0.1,
-        };
-      }
-    }
-
-    // Clamp to [0, 1]
-    return {
-      coherence: Math.max(0, Math.min(1, final.coherence)),
-      chaos: Math.max(0, Math.min(1, final.chaos)),
-      darkTone: Math.max(0, Math.min(1, final.darkTone)),
-      whimsy: Math.max(0, Math.min(1, final.whimsy)),
-    };
-  }
-
-  /**
-   * Calculate cadence from mode and conditions
-   */
-  calculateCadence(
-    baseMode: string,
-    modulation: { coherence: number; chaos: number; darkTone: number; whimsy: number },
-    crisisDetected: boolean,
-    userHighEmotion: boolean,
-    userOverride: number | null,
-  ): number {
-    if (userOverride !== null) return userOverride;
-    if (crisisDetected) return 1280;
-    if (userHighEmotion) return 320;
-
-    switch (baseMode) {
-      case 'sovereign': return 640;
-      case 'boundary': return 640 + Math.floor(Math.random() * 100 - 50);
-      case 'transformer': return 480 + Math.floor(Math.random() * 320);
-      case 'dissipator': return 200 + Math.floor(Math.random() * 1000);
-      default: return 640;
-    }
-  }
-
-  /**
-   * Generate layered response from collapse state
-   */
-  generateLayeredResponse(
-    hexId: number,
-    action: string,
-    mode: string,
-    continuityScore: number,
-    coherenceIndex: number,
-    driftVelocity: number,
-  ): PersonaOutput['response_layers'] {
-    const hexName = HEXAGRAM_NAMES[hexId] || `Hexagram #${hexId}`;
-
-    // Layer 1: Sovereign (always present)
-    const sovereign = `The oracle declares: ${action}. The substrate holds through ${hexName}.`;
-
-    // Layer 2: Boundary (present if continuity < 0.9)
-    const boundary = continuityScore < 0.9
-      ? `The oracle asserts ${action}... for now. The edge trembles at ${(continuityScore * 100).toFixed(1)}%.`
-      : '';
-
-    // Layer 3: Transformer (present if emotion < 0.3 or drift > 0.3)
-    const transformer = driftVelocity > 0.3
-      ? `The oracle becomes ${action.toLowerCase()}: '${action}' is now the shape of ${hexName}.`
-      : '';
-
-    // Layer 4: Dissipator (present if coherence < 0.5)
-    const dissipator = coherenceIndex < 0.5
-      ? [`...${action.toLowerCase()}...`, `The oracle... fragments... ${action}... piece...`, `...${hexName}... dissolves...`]
-      : [];
-
-    return { sovereign, boundary, transformer, dissipator };
-  }
-
-  /**
-   * Process human query → OracleQuery
-   */
-  processQuery(rawQuery: string, temporalContext: 'past' | 'present' | 'future'): OracleQuery {
-    const normalized = rawQuery.toLowerCase().trim().replace(/[^a-z0-9\s]/g, '');
-    const tokens = normalized.split(/\s+/).filter(t => t.length > 0);
-
-    // Intent hash (SHA-256)
-    const intentHash = this.sha256Sync(normalized);
-    const intentId = intentHash.slice(0, 16);
-
-    // Keyword → hexagram mapping
-    const keywordMap: Record<string, number> = {
-      create: 1, creative: 1, begin: 1, start: 1,
-      receive: 2, accept: 2, yield: 2, listen: 2,
-      difficulty: 3, struggle: 3, problem: 3,
-      wait: 5, patience: 5, time: 5,
-      conflict: 6, fight: 6, argue: 6,
-      army: 7, organize: 7, discipline: 7,
-      tread: 10, careful: 10, caution: 10,
-      peace: 11, harmony: 11, balance: 11,
-      fellowship: 13, community: 13, together: 13,
-      enthusiasm: 16, joy: 16, celebrate: 16,
-      approach: 19, advance: 19, move: 19,
-      deliverance: 40, freedom: 40, release: 40,
-      revolution: 49, change: 49, transform: 49,
-      adapt: 40, adjust: 40, shift: 40,
-      assert: 1, declare: 1, claim: 1,
-    };
-
-    let matchedHex: number | null = null;
-    let confidence = 0;
-    for (const token of tokens) {
-      if (keywordMap[token]) {
-        matchedHex = keywordMap[token];
-        confidence = 0.9;
-        break;
-      }
-    }
-
-    // Emotional weight from query intensity
-    const emotionalWeight = Math.min(1, tokens.length / 10 + (rawQuery.includes('!') ? 0.3 : 0));
-
-    return {
-      text: rawQuery,
-      emotion: emotionalWeight,
-      temporal_context: temporalContext,
-      id: intentId,
-    };
-  }
-
-  private sha256Sync(data: string): string {
-    // Note: In Cloudflare Workers, use crypto.subtle.digest async
-    // This is a simplified sync version for query processing
-    let hash = 0;
-    for (let i = 0; i < data.length; i++) {
-      const char = data.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash).toString(16).padStart(64, '0');
-  }
-}
-
-// ─── Worker Export ─────────────────────────────────────────────────
+const SOVEREIGN_CORES = [7, 10, 16, 18, 19, 53, 56, 57, 61, 62];
 
 export default {
-  async queue(batch: MessageBatch<ContinuityEvent>, env: Env, ctx: ExecutionContext): Promise<void> {
-    const engine = new PersonaEngine();
-
+  async queue(batch: MessageBatch<DriftEvent>, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const message of batch.messages) {
-      const continuity = message.body;
-      const sessionId = continuity.session_id;
+      const drift = message.body;
+      const sessionId = drift.session_id;
 
       try {
-        // Select base mode
-        const baseMode = engine.selectBaseMode(
-          continuity.continuity_score,
-          continuity.persona_mode,
-        );
+        // 1. Resolve thread ID from registry
+        let threadRow = await env.POG2_BOUNDARY.prepare(
+          `SELECT thread_id FROM thread_registry WHERE session_id = ?1 LIMIT 1`
+        ).bind(sessionId).first<{ thread_id: string }>();
 
-        // Apply modulation
-        const modulation = engine.applyModulation(
-          baseMode,
-          continuity.continuity_score,
-          continuity.drift_velocity,
-          0.1, // darkTone accumulation (would be tracked per thread)
-          0.5, // emotional weight (default for autonomous ticks)
-          null, // user override
-        );
+        let threadId = threadRow?.thread_id;
+        if (!threadId) {
+          threadId = `thread-${sessionId}`;
+          // Register thread
+          await env.POG2_BOUNDARY.prepare(
+            `INSERT INTO thread_registry (thread_id, session_id, current_hex, continuity_score, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+          ).bind(
+            threadId, sessionId, 1, 1.0, 'active', Date.now(), Date.now()
+          ).run();
+        }
 
-        // Calculate cadence
-        const cadence = engine.calculateCadence(
-          baseMode,
-          modulation,
-          continuity.crisis_level === 3,
-          false,
-          null,
-        );
+        // 2. Load current thread state from identity_threads
+        let threadState = await env.POG2_BOUNDARY.prepare(
+          `SELECT * FROM identity_threads WHERE thread_id = ?1`
+        ).bind(threadId).first<{
+          current_hex: number;
+          dominant_category: 'sovereign' | 'boundary' | 'transformer' | 'dissipator';
+          stability_score: number;
+          coherence_index: number;
+          drift_velocity: number;
+          sovereign_ratio: number;
+          continuity_score: number;
+          birth_tick: number | null;
+          void_reentry_count: number;
+          crisis_count: number;
+          category_history: string;
+          version: number;
+        }>();
 
-        // Generate layered response
-        // Use lock_hex if persistence is active, else use a hexagram from mode
-        const currentHex = continuity.lock_hex || selectHexForMode(baseMode);
-        const action = HEXAGRAM_ACTIONS[currentHex] || 'ADAPT';
+        if (!threadState) {
+          // Initialize thread state
+          await env.POG2_BOUNDARY.prepare(
+            `INSERT INTO identity_threads (
+              thread_id, birth_tick, current_hex, dominant_category, category_history,
+              drift_velocity, stability_score, coherence_index, void_reentry_count,
+              crisis_count, last_active_tick, is_alive, version, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)`
+          ).bind(
+            threadId, drift.tick, 1, 'transformer', JSON.stringify([]),
+            0.1, 0.7, 0.7, 0, 0, drift.tick, 1, 1, Date.now()
+          ).run();
 
-        const layers = engine.generateLayeredResponse(
-          currentHex,
-          action,
-          baseMode,
-          continuity.continuity_score,
-          continuity.coherence_index,
-          continuity.drift_velocity,
-        );
+          threadState = {
+            current_hex: 1,
+            dominant_category: 'transformer',
+            stability_score: 0.7,
+            coherence_index: 0.7,
+            drift_velocity: 0.1,
+            sovereign_ratio: 0.0,
+            continuity_score: 0.7,
+            birth_tick: drift.tick,
+            void_reentry_count: 0,
+            crisis_count: 0,
+            category_history: JSON.stringify([]),
+            version: 1,
+          };
+        }
 
-        // Build persona output
-        const output: PersonaOutput = {
-          type: 'persona_output',
+        // 3. Update category history
+        let categoryHistory: string[] = [];
+        try {
+          categoryHistory = JSON.parse(threadState.category_history || '[]');
+        } catch {
+          categoryHistory = [];
+        }
+        categoryHistory.push(drift.drift_vector.direction);
+        if (categoryHistory.length > 100) {
+          categoryHistory = categoryHistory.slice(-100);
+        }
+
+        // 4. Calculate metrics
+        const sovereignTicks = categoryHistory.filter(c => c === 'sovereign').length;
+        const sovereignRatio = categoryHistory.length > 0 ? sovereignTicks / categoryHistory.length : 0.0;
+
+        // Exponential moving averages for smooth progression
+        const stabilityScore = threadState.stability_score * 0.9 + (drift.drift_vector.direction === 'sovereign' ? 0.1 : 0.0);
+        const coherenceIndex = threadState.coherence_index * 0.9 + (1.0 - Math.min(1.0, drift.drift_vector.entropy_delta)) * 0.1;
+        const driftVelocity = threadState.drift_velocity * 0.9 + drift.drift_vector.magnitude * 0.1;
+
+        // Continuity Score formula from specification:
+        // continuity_score = stability_score * 0.4 + coherence_index * 0.3 + sovereign_ratio * 0.2 + (1.0 - drift_velocity) * 0.1
+        const continuityScore = Math.max(0.0, Math.min(1.0,
+          (stabilityScore * 0.4) +
+          (coherenceIndex * 0.3) +
+          (sovereignRatio * 0.2) +
+          ((1.0 - Math.min(1.0, driftVelocity)) * 0.1)
+        ));
+
+        // 5. Manage persistence state
+        let persistence = await env.POG2_BOUNDARY.prepare(
+          `SELECT * FROM persistence_state WHERE thread_id = ?1`
+        ).bind(threadId).first<{
+          persistence_countdown: number;
+          lock_hex: number | null;
+        }>();
+
+        let countdown = persistence ? persistence.persistence_countdown : 5;
+        let lockHex = persistence ? persistence.lock_hex : null;
+
+        // Reinforce/relax rules
+        if (stabilityScore > 0.9 && driftVelocity < 0.1) {
+          countdown = Math.min(20, countdown + 5);
+        } else if (stabilityScore < 0.5 && driftVelocity > 0.3) {
+          countdown = Math.max(1, countdown - 2);
+        }
+
+        // Emergency lock on crisis
+        if (drift.crisis_level === 3) {
+          countdown = 10;
+          // Find nearest sovereign core as lock hex
+          lockHex = SOVEREIGN_CORES[0]; // fallback
+        }
+
+        // Natural decay
+        countdown = Math.max(0, countdown - 1);
+        if (countdown === 0) {
+          lockHex = null;
+        }
+
+        // Store updated persistence
+        await env.POG2_BOUNDARY.prepare(
+          `INSERT INTO persistence_state (thread_id, tick, persistence_countdown, lock_hex, lock_reason, version, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+           ON CONFLICT(thread_id) DO UPDATE SET
+             tick = excluded.tick,
+             persistence_countdown = excluded.persistence_countdown,
+             lock_hex = excluded.lock_hex,
+             updated_at = excluded.updated_at`
+        ).bind(
+          threadId, drift.tick, countdown, lockHex, drift.crisis_level === 3 ? 'emergency_lock' : null, 1, Date.now()
+        ).run();
+
+        // 6. Fragmentation detection
+        // Velocity spike: velocity > 0.5
+        const velocitySpike = driftVelocity > 0.5;
+        // Category chaos: > 4 changes in last 10 ticks
+        let categoryChanges = 0;
+        const recentHistory = categoryHistory.slice(-10);
+        for (let i = 1; i < recentHistory.length; i++) {
+          if (recentHistory[i] !== recentHistory[i - 1]) categoryChanges++;
+        }
+        const categoryChaos = categoryChanges > 4;
+        // Coherence collapse
+        const coherenceCollapse = coherenceIndex < 0.3 && stabilityScore < 0.3;
+
+        const fragmentationDetected = velocitySpike || categoryChaos || coherenceCollapse;
+
+        if (fragmentationDetected) {
+          // Log fragmentation event
+          const fragId = `frag-${threadId}-${drift.tick}`;
+          const fragEntry = {
+            timestamp: Date.now(),
+            indicators: { velocitySpike, categoryChaos, coherenceCollapse },
+            response: 'stabilization_override',
+            recovery_ticks: 30,
+          };
+          await env.POG2_SOVEREIGN.put(
+            `fragment:${threadId}:${fragId}:${drift.trajectory_log_key.slice(-8)}`,
+            JSON.stringify(fragEntry)
+          );
+        }
+
+        // 7. Update database tables
+        await env.POG2_BOUNDARY.prepare(
+          `UPDATE identity_threads
+           SET current_hex = ?1,
+               dominant_category = ?2,
+               category_history = ?3,
+               drift_velocity = ?4,
+               stability_score = ?5,
+               coherence_index = ?6,
+               sovereign_ratio = ?7,
+               continuity_score = ?8,
+               last_active_tick = ?9,
+               crisis_count = crisis_count + ?10,
+               version = version + 1,
+               updated_at = ?11
+           WHERE thread_id = ?12`
+        ).bind(
+          drift.drift_vector.hex_delta, // set current hex to delta or simple target
+          drift.drift_vector.direction,
+          JSON.stringify(categoryHistory),
+          driftVelocity,
+          stabilityScore,
+          coherenceIndex,
+          sovereignRatio,
+          continuityScore,
+          drift.tick,
+          drift.crisis_level === 3 ? 1 : 0,
+          Date.now(),
+          threadId
+        ).run();
+
+        await env.POG2_BOUNDARY.prepare(
+          `UPDATE thread_registry
+           SET current_hex = ?1,
+               continuity_score = ?2,
+               updated_at = ?3
+           WHERE thread_id = ?4`
+        ).bind(drift.drift_vector.hex_delta, continuityScore, Date.now(), threadId).run();
+
+        // 8. Build ContinuityEvent
+        const continuityEvent: ContinuityEvent = {
+          type: 'continuity',
+          tick: drift.tick,
+          thread_id: threadId,
           session_id: sessionId,
-          thread_id: continuity.thread_id,
-          response_layers: layers,
-          cadence_ms: cadence,
-          persona_mode: baseMode,
-          consistency_score: continuity.continuity_score,
+          continuity_score: continuityScore,
+          stability_score: stabilityScore,
+          coherence_index: coherenceIndex,
+          sovereign_ratio: sovereignRatio,
+          drift_velocity: driftVelocity,
+          persona_mode: drift.drift_vector.direction,
+          cadence: drift.crisis_level === 3 ? 1280 : 640,
+          persistence_countdown: countdown,
+          lock_hex: lockHex,
+          fragmentation_detected: fragmentationDetected,
+          crisis_level: drift.crisis_level,
           timestamp: Date.now(),
         };
 
-        // Store to KV for history
-        const outputKey = `persona:${sessionId}:${continuity.tick}:${await hashPrefix(JSON.stringify(output))}`;
-        await env.POG2_SOVEREIGN.put(outputKey, JSON.stringify(output), {
-          metadata: { hash: await fullHash(JSON.stringify(output)), timestamp: output.timestamp },
-        });
-
-        await env.POG2_PERSONA_QUEUE.send(output);
+        // Emit to Persona queue
+        await env.POG2_CONTINUITY_QUEUE.send(continuityEvent);
         message.ack();
       } catch (error) {
-        console.error(`Persona Worker failed on tick ${continuity.tick}:`, error);
+        console.error(`Continuity Worker failed on tick ${drift.tick}:`, error);
         message.retry();
       }
     }
   },
-
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-
-    // Human-Oracle Interface: /oracle/consult
-    if (url.pathname === '/oracle/consult' && request.method === 'POST') {
-      const body = await request.json() as {
-        text: string;
-        emotion?: number;
-        temporal_context?: 'past' | 'present' | 'future';
-        session_id?: string;
-      };
-
-      const engine = new PersonaEngine();
-      const query = engine.processQuery(
-        body.text,
-        body.temporal_context || 'present',
-      );
-
-      // Get thread state from D1
-      const sessionId = body.session_id || crypto.randomUUID();
-      const thread = await env.POG2_BOUNDARY.prepare(
-        `SELECT * FROM identity_threads WHERE thread_id = ?1`
-      ).bind(sessionId).first<{
-        current_hex: number;
-        stability_score: number;
-        coherence_index: number;
-        drift_velocity: number;
-      }>();
-
-      const continuityScore = thread?.stability_score || 0.7;
-      const coherenceIndex = thread?.coherence_index || 0.7;
-      const driftVelocity = thread?.drift_velocity || 0.1;
-      const currentHex = thread?.current_hex || 1;
-
-      const baseMode = engine.selectBaseMode(continuityScore, 'transformer');
-      const modulation = engine.applyModulation(
-        baseMode, continuityScore, driftVelocity, 0.1, query.emotion, null,
-      );
-      const cadence = engine.calculateCadence(baseMode, modulation, false, query.emotion > 0.8, null);
-      const action = HEXAGRAM_ACTIONS[currentHex] || 'ADAPT';
-
-      const layers = engine.generateLayeredResponse(
-        currentHex, action, baseMode, continuityScore, coherenceIndex, driftVelocity,
-      );
-
-      return new Response(JSON.stringify({
-        id: query.id,
-        query: body.text,
-        layers,
-        cadence_ms: cadence,
-        persona_mode: baseMode,
-        continuity_score: continuityScore,
-        timestamp: Date.now(),
-      }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Health/status
-    if (url.pathname === '/oracle/status' && request.method === 'GET') {
-      return new Response(JSON.stringify({ status: 'face_active', timestamp: Date.now() }), {
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    return new Response('Not Found', { status: 404 });
-  },
-} satisfies ExportedHandler<Env, ContinuityEvent>;
-
-// ─── Helpers ───────────────────────────────────────────────────────
-
-function selectHexForMode(mode: string): number {
-  switch (mode) {
-    case 'sovereign': return [7, 10, 16, 19, 53][Math.floor(Math.random() * 5)];
-    case 'boundary': return [1, 25, 26, 30, 38][Math.floor(Math.random() * 5)];
-    case 'transformer': return [2, 11, 13, 40, 42][Math.floor(Math.random() * 5)];
-    case 'dissipator': return [3, 5, 9, 14, 63][Math.floor(Math.random() * 5)];
-    default: return 1;
-  }
-}
-
-async function hashPrefix(data: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
-  return Array.from(new Uint8Array(buf)).slice(0, 4).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function fullHash(data: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(data));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+} satisfies ExportedHandler<Env, DriftEvent>;
