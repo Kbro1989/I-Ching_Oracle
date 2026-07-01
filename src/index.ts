@@ -15,13 +15,21 @@ export { POG2WebSocketDO } from './durable-objects/websocket';
 
 // ─── Queue Handler Exports ──────────────────────────────────────────
 
-export {
+import {
   onCollapseEvent,
   onDriftEvent,
   onContinuityEvent,
   onCrisisEvent,
   onPersonaOutput,
 } from './queues/handlers';
+
+export {
+  onCollapseEvent,
+  onDriftEvent,
+  onContinuityEvent,
+  onCrisisEvent,
+  onPersonaOutput,
+};
 
 // ─── Worker Fetch Handlers ────────────────────────────────────────
 
@@ -168,26 +176,83 @@ export default {
 
   // ─── Unified Queue Handler ────────────────────────────────────────
   async queue(batch: MessageBatch<any>, env: Env, ctx: ExecutionContext): Promise<void> {
-    switch (batch.queue) {
-      case 'pog2-collapse-events':
-        await WeaveWorker.queue(batch, env, ctx);
-        break;
-      case 'pog2-drift-events':
-        await DriftWorker.queue(batch, env, ctx);
-        break;
-      case 'pog2-continuity-events':
-        await ContinuityWorker.queue(batch, env, ctx);
-        break;
-      case 'pog2-crisis-broadcast':
-        await onCrisisEvent(batch, env, ctx);
-        break;
-      case 'pog2-persona-outputs':
-        await PersonaWorker.queue(batch, env, ctx);
-        break;
-      default:
-        console.warn('Unknown queue:', batch.queue);
-        for (const msg of batch.messages) msg.ack();
-        break;
+    const tickMessages: Message<any>[] = [];
+    const collapseMessages: Message<any>[] = [];
+    const driftMessages: Message<any>[] = [];
+    const continuityMessages: Message<any>[] = [];
+    const crisisMessages: Message<any>[] = [];
+    const personaOutputMessages: Message<any>[] = [];
+
+    for (const msg of batch.messages) {
+      const body = msg.body;
+      const type = body?.type;
+
+      if (type === 'tick') {
+        tickMessages.push(msg);
+      } else if (type === 'collapse') {
+        collapseMessages.push(msg);
+      } else if (type === 'drift') {
+        driftMessages.push(msg);
+      } else if (type === 'continuity') {
+        continuityMessages.push(msg);
+      } else if (type === 'crisis') {
+        crisisMessages.push(msg);
+      } else if (type === 'persona_output' || body?.response_layers) {
+        if (body && !body.type) body.type = 'persona_output';
+        personaOutputMessages.push(msg);
+      } else {
+        // Fallback to queue-name based routing if type is missing
+        console.warn(`Queue message missing type property on ${batch.queue}. Falling back to queue routing.`);
+        if (batch.queue === 'pog2-collapse-events') {
+          tickMessages.push(msg);
+        } else if (batch.queue === 'pog2-drift-events') {
+          collapseMessages.push(msg);
+        } else if (batch.queue === 'pog2-continuity-events') {
+          driftMessages.push(msg);
+        } else if (batch.queue === 'pog2-crisis-broadcast') {
+          crisisMessages.push(msg);
+        } else if (batch.queue === 'pog2-persona-outputs') {
+          personaOutputMessages.push(msg);
+        } else {
+          msg.ack();
+        }
+      }
+    }
+
+    // Process grouped messages
+    if (tickMessages.length > 0) {
+      await WeaveWorker.queue({ queue: batch.queue, messages: tickMessages }, env, ctx);
+    }
+    if (collapseMessages.length > 0) {
+      if (batch.queue === 'pog2-collapse-events') {
+        await onCollapseEvent({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+      } else {
+        await DriftWorker.queue({ queue: batch.queue, messages: collapseMessages }, env, ctx);
+      }
+    }
+    if (driftMessages.length > 0) {
+      if (batch.queue === 'pog2-drift-events') {
+        await onDriftEvent({ queue: batch.queue, messages: driftMessages }, env, ctx);
+      } else {
+        await ContinuityWorker.queue({ queue: batch.queue, messages: driftMessages }, env, ctx);
+      }
+    }
+    if (continuityMessages.length > 0) {
+      if (batch.queue === 'pog2-continuity-events') {
+        await onContinuityEvent({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+      } else {
+        await PersonaWorker.queue({ queue: batch.queue, messages: continuityMessages }, env, ctx);
+      }
+    }
+    if (crisisMessages.length > 0) {
+      await onCrisisEvent({ queue: batch.queue, messages: crisisMessages }, env, ctx);
+    }
+    if (personaOutputMessages.length > 0) {
+      if (batch.queue === 'pog2-persona-outputs') {
+        await onPersonaOutput({ queue: batch.queue, messages: personaOutputMessages }, env, ctx);
+      } else {
+        for (const msg of personaOutputMessages) msg.ack();
+      }
     }
   },
 };

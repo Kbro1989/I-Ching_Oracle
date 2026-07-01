@@ -874,7 +874,7 @@
 <script>
 // ─── World Patch / Model Patch ───────────────────────────────────
 (() => {
-  const assetUrl = 'src/3D/3,50,1,1.glb';
+  const assetUrl = '3D/3,50,1,1.glb';
   const sector = { x: 2064, y: 3456 };
 
   function setStatus(id, text) {
@@ -894,8 +894,8 @@
     __mapLoading = true;
     try {
       const [rRes, idxRes] = await Promise.all([
-        fetch('src/3D/map/regions.json'),
-        fetch('src/3D/map/region_index.json')
+        fetch('3D/map/regions.json'),
+        fetch('3D/map/region_index.json')
       ]);
       const rJson = await rRes.json();
       __mapRegions = rJson.regions || [];
@@ -915,7 +915,7 @@
       return [];
     }
     try {
-      const res = await fetch('src/3D/map/locs/locs_' + regionId + '.json');
+      const res = await fetch('3D/map/locs/locs_' + regionId + '.json');
       const locs = await res.json();
       __mapLocsCache[regionId] = locs;
       return locs;
