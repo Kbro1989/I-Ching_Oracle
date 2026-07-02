@@ -204,11 +204,11 @@ export default {
         // Fallback to queue-name based routing if type is missing
         console.warn(`Queue message missing type property on ${batch.queue}. Falling back to queue routing.`);
         if (batch.queue === 'pog2-collapse-events') {
-          tickMessages.push(msg);
-        } else if (batch.queue === 'pog2-drift-events') {
           collapseMessages.push(msg);
-        } else if (batch.queue === 'pog2-continuity-events') {
+        } else if (batch.queue === 'pog2-drift-events') {
           driftMessages.push(msg);
+        } else if (batch.queue === 'pog2-continuity-events') {
+          continuityMessages.push(msg);
         } else if (batch.queue === 'pog2-crisis-broadcast') {
           crisisMessages.push(msg);
         } else if (batch.queue === 'pog2-persona-outputs') {

@@ -577,9 +577,7 @@
 </head>
 <body>
 
-<div class="crisis-banner" id="crisisBanner">
-  CRISIS DETECTED — FORBIDDEN STATE PROXIMITY — EMERGENCY LOCK ACTIVE
-</div>
+<div class="crisis-banner" id="crisisBanner" aria-hidden="true"></div>
 
 <div class="dashboard">
   <!-- Top Bar -->
@@ -601,7 +599,7 @@
   <div class="panel oracle-console" id="oracleConsole">
     <div class="panel-header">
       <span>Oracle Console</span>
-      <span class="badge" id="personaModeBadge">SOVEREIGN</span>
+      <span class="badge" id="personaModeBadge">—</span>
     </div>
 
     <div class="query-section">
@@ -623,7 +621,7 @@
 
     <div class="panel-header" style="margin-top:12px">
       <span>Response</span>
-      <span class="badge" id="cadenceBadge">640ms</span>
+      <span class="badge" id="cadenceBadge">—</span>
     </div>
     
     <div class="temporal-weave-section hidden" id="temporalWeaveSection" style="margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 12px; opacity: 0; transition: opacity 0.5s ease;">
@@ -650,7 +648,7 @@
     <div class="response-layers" id="responseLayers">
       <div class="layer sovereign" id="layerSovereign">
         <div class="layer-label">Sovereign</div>
-        <div class="layer-content">Awaiting query...</div>
+        <div class="layer-content" id="layerSovereignContent"></div>
       </div>
       <div class="layer boundary hidden" id="layerBoundary">
         <div class="layer-label">Boundary</div>
@@ -673,11 +671,11 @@
     <div class="panel compact" id="modelPanel">
       <div class="panel-header">
         <span>Model Patch</span>
-        <span class="badge" id="modelStatus">Avatar: load pending</span>
+        <span class="badge" id="modelStatus">—</span>
       </div>
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Pinned asset: 1,50,1,1.glb</div>
       <div style="background:#000;border:1px solid var(--border);height:100%;overflow:hidden;display:flex;flex-direction:column">
-        <div style="font-size:10px;color:var(--text-dim);text-align:center;padding:2px">Shadow Oracle Model</div>
+        <div style="font-size:10px;color:var(--text-dim);text-align:center;padding:2px">Daemonheim Terrain</div>
         <div style="flex:1" id="modelBox">
           <canvas id="modelCanvas" width="360" height="220" style="width:100%;height:100%;display:block"></canvas>
         </div>
@@ -688,7 +686,7 @@
     <div class="panel compact" id="worldPanel">
       <div class="panel-header">
         <span>World Patch</span>
-        <span class="badge" id="worldStatus">Land: load pending</span>
+        <span class="badge" id="worldStatus">—</span>
       </div>
       <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">Pinned sector: x2064 y3456</div>
       <div style="background:#000;border:1px solid var(--border);height:100%;overflow:hidden;display:flex;flex-direction:column">
@@ -704,49 +702,49 @@
   <div class="panel">
     <div class="panel-header">
       <span>System State</span>
-      <span class="badge" id="continuityBadge">1.000</span>
+      <span class="badge" id="continuityBadge">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Continuity Score</span>
       <div class="metric-bar"><div class="metric-bar-fill" id="continuityBar" style="width:100%;background:var(--accent-gold)"></div></div>
-      <span class="metric-value" id="continuityValue">1.000</span>
+      <span class="metric-value" id="continuityValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Stability</span>
       <div class="metric-bar"><div class="metric-bar-fill" id="stabilityBar" style="width:100%;background:var(--accent-gold)"></div></div>
-      <span class="metric-value" id="stabilityValue">1.000</span>
+      <span class="metric-value" id="stabilityValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Coherence</span>
       <div class="metric-bar"><div class="metric-bar-fill" id="coherenceBar" style="width:100%;background:var(--accent-gold)"></div></div>
-      <span class="metric-value" id="coherenceValue">1.000</span>
+      <span class="metric-value" id="coherenceValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Drift Velocity</span>
       <div class="metric-bar"><div class="metric-bar-fill" id="driftBar" style="width:0%;background:var(--accent-teal)"></div></div>
-      <span class="metric-value" id="driftValue">0.000</span>
+      <span class="metric-value" id="driftValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Sovereign Ratio</span>
       <div class="metric-bar"><div class="metric-bar-fill" id="sovereignBar" style="width:100%;background:var(--accent-gold)"></div></div>
-      <span class="metric-value" id="sovereignValue">1.000</span>
+      <span class="metric-value" id="sovereignValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Persistence</span>
-      <span class="metric-value" id="persistenceValue">5 ticks</span>
+      <span class="metric-value" id="persistenceValue">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Action</span>
-      <span class="metric-value" id="actionValue" style="color:var(--accent-gold)">ASSERT</span>
+      <span class="metric-value" id="actionValue" style="color:var(--accent-gold)">—</span>
     </div>
     <div class="metric-row">
       <span class="metric-label">Category</span>
-      <span class="metric-value" id="categoryValue" style="color:var(--accent-gold)">SOVEREIGN</span>
+      <span class="metric-value" id="categoryValue" style="color:var(--accent-gold)">—</span>
     </div>
 
     <div class="panel-header" style="margin-top:16px">
       <span>Persona Voice</span>
-      <span class="badge" id="cadenceValue">640ms</span>
+      <span class="badge" id="cadenceValue">—</span>
     </div>
     <div class="cadence-ring" style="margin:0 auto">
       <svg width="40" height="40" viewBox="0 0 40 40">
@@ -757,22 +755,22 @@
     <div class="prosody-grid">
       <div class="prosody-item">
         <div class="prosody-name">Coherence</div>
-        <div class="prosody-value" id="prosodyCoherence" style="color:var(--accent-gold)">1.00</div>
-        <div class="metric-bar"><div class="metric-bar-fill" id="coherenceProsodyBar" style="width:100%;background:var(--accent-gold)"></div></div>
+        <div class="prosody-value" id="prosodyCoherence" style="color:var(--accent-gold)">—</div>
+        <div class="metric-bar"><div class="metric-bar-fill" id="coherenceProsodyBar" style="width:0%;background:var(--accent-gold)"></div></div>
       </div>
       <div class="prosody-item">
         <div class="prosody-name">Chaos</div>
-        <div class="prosody-value" id="prosodyChaos" style="color:var(--text-dim)">0.00</div>
+        <div class="prosody-value" id="prosodyChaos" style="color:var(--text-dim)">—</div>
         <div class="metric-bar"><div class="metric-bar-fill" id="chaosProsodyBar" style="width:0%;background:var(--accent-void)"></div></div>
       </div>
       <div class="prosody-item">
         <div class="prosody-name">DarkTone</div>
-        <div class="prosody-value" id="prosodyDarkTone" style="color:var(--text-dim)">0.00</div>
+        <div class="prosody-value" id="prosodyDarkTone" style="color:var(--text-dim)">—</div>
         <div class="metric-bar"><div class="metric-bar-fill" id="darktoneProsodyBar" style="width:0%;background:var(--accent-red)"></div></div>
       </div>
       <div class="prosody-item">
         <div class="prosody-name">Whimsy</div>
-        <div class="prosody-value" id="prosodyWhimsy" style="color:var(--text-dim)">0.00</div>
+        <div class="prosody-value" id="prosodyWhimsy" style="color:var(--text-dim)">—</div>
         <div class="metric-bar"><div class="metric-bar-fill" id="whimsyProsodyBar" style="width:0%;background:var(--accent-teal)"></div></div>
       </div>
     </div>
@@ -782,7 +780,7 @@
   <div class="panel compact">
     <div class="panel-header">
       <span>Thread Monitor</span>
-      <span class="badge" id="threadCountBadge">0 threads</span>
+      <span class="badge" id="threadCountBadge">—</span>
     </div>
     <table class="thread-table" id="threadTable">
       <thead>
@@ -796,7 +794,7 @@
         </tr>
       </thead>
       <tbody id="threadTableBody">
-        <tr><td colspan="6" style="text-align:center;color:var(--text-dim)">No active threads</td></tr>
+        <tr><td colspan="6" style="text-align:center;color:var(--text-dim)">—</td></tr>
       </tbody>
     </table>
   </div>
@@ -805,14 +803,14 @@
   <div class="panel">
     <div class="panel-header">
       <span>Attractor Map</span>
-      <span class="badge" id="currentHexBadge">#1 Qian</span>
+      <span class="badge" id="currentHexBadge">—</span>
     </div>
     <div class="hex-grid" id="hexGrid"></div>
     <div class="map-legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-gold)"></div>Sovereign (10)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Boundary (7)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-teal)"></div>Transformer (35)</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-void)"></div>Dissipator (12)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-gold)"></div>Sovereign</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-amber)"></div>Boundary</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-teal)"></div>Transformer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent-void)"></div>Dissipator</div>
     </div>
 
     <div class="panel-header" style="margin-top:16px">
@@ -827,9 +825,9 @@
       <div class="phase-step" data-phase="collapse">Collapse</div>
     </div>
     <div id="weaveMetrics" style="margin-top:8px;font-size:10px;color:var(--text-dim)">
-      void_entropy: <span id="voidEntropy">0.999</span> |
-      causal_confidence: <span id="causalConfidence">0.000</span> |
-      phase_multiplier: <span id="phaseMultiplier">1.000</span>
+      void_entropy: <span id="voidEntropy">—</span> |
+      causal_confidence: <span id="causalConfidence">—</span> |
+      phase_multiplier: <span id="phaseMultiplier">—</span>
     </div>
   </div>
 
@@ -839,28 +837,28 @@
     <div class="panel compact">
       <div class="panel-header">
         <span>Crisis Monitor</span>
-        <span class="badge" id="crisisBadge" style="background:var(--border);color:var(--text-dim)">LEVEL 0</span>
+        <span class="badge" id="crisisBadge" style="background:var(--border);color:var(--text-dim)">—</span>
       </div>
       <div id="crisisPanel" style="font-size:11px;color:var(--text-dim)">
-        <div style="margin-bottom:8px">No active crises. System operating within normal parameters.</div>
+        <div style="margin-bottom:8px"></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div style="background:var(--bg);padding:8px;border-radius:4px">
             <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Shell Distance</div>
-            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="shellDistance">2</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="shellDistance">—</div>
           </div>
           <div style="background:var(--bg);padding:8px;border-radius:4px">
             <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Projected Shell</div>
-            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="projectedShell">2</div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="projectedShell">—</div>
           </div>
         </div>
         <div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
           <div style="background:var(--bg);padding:8px;border-radius:4px">
             <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Void Reentry</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="voidReentry">0</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="voidReentry">—</div>
           </div>
           <div style="background:var(--bg);padding:8px;border-radius:4px">
             <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Crisis Count</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="crisisCount">0</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text-bright)" id="crisisCount">—</div>
           </div>
         </div>
       </div>
@@ -870,24 +868,24 @@
     <div class="panel compact">
       <div class="panel-header">
         <span>Global State</span>
-        <span class="badge" id="globalModeBadge">NORMAL</span>
+        <span class="badge" id="globalModeBadge">—</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div style="background:var(--bg);padding:8px;border-radius:4px">
           <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Continuity</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgContinuity">1.00</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgContinuity">—</div>
         </div>
         <div style="background:var(--bg);padding:8px;border-radius:4px">
           <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Stability</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgStability">1.00</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgStability">—</div>
         </div>
         <div style="background:var(--bg);padding:8px;border-radius:4px">
           <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Avg Coherence</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgCoherence">1.00</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-gold)" id="avgCoherence">—</div>
         </div>
         <div style="background:var(--bg);padding:8px;border-radius:4px">
           <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Active Sessions</div>
-          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="activeSessions">1</div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent-teal)" id="activeSessions">—</div>
         </div>
       </div>
     </div>
@@ -1780,7 +1778,7 @@ function showCrisis(msg) {
 function showResponse(msg) {
   const layers = msg.layers;
   if (layers.sovereign) {
-    els.layerSovereign.querySelector('.layer-content').textContent = layers.sovereign;
+    document.getElementById('layerSovereignContent').textContent = layers.sovereign;
     els.layerSovereign.classList.remove('hidden');
   }
   if (layers.boundary) {
@@ -1837,7 +1835,7 @@ els.submitBtn.addEventListener('click', async () => {
   if (!text) return;
 
   // Clear previous response layers & temporal weave section
-  els.layerSovereign.querySelector('.layer-content').textContent = "Collapsing possibility space...";
+  document.getElementById('layerSovereignContent').textContent = "Collapsing possibility space...";
   els.layerBoundary.classList.add('hidden');
   els.layerTransformer.classList.add('hidden');
   els.layerDissipator.classList.add('hidden');
@@ -1931,7 +1929,7 @@ els.submitBtn.addEventListener('click', async () => {
     console.error('Collapse consultation failed:', err);
     clearInterval(collapseInterval);
     collapseInterval = null;
-    els.layerSovereign.querySelector('.layer-content').textContent = "Consultation failed. The channel is closed.";
+    document.getElementById('layerSovereignContent').textContent = "Consultation failed. The channel is closed.";
   } finally {
     els.submitBtn.disabled = false;
     els.queryInput.disabled = false;
@@ -1952,6 +1950,14 @@ async function pollThreadMonitor() {
       fetch(BASE_URL + '/admin/threads'),
       fetch(BASE_URL + '/admin/state'),
     ]);
+    
+    if (!threadsRes.ok) {
+      const err = await threadsRes.json().catch(() => ({ error: 'D1_TIMEOUT' }));
+      els.threadTableBody.innerHTML = '<tr><td colspan="8" style="opacity:0.6;text-align:center">Thread telemetry unavailable: ' + (err.error || 'D1_TIMEOUT') + '</td></tr>';
+      els.threadCountBadge.textContent = 'telemetry offline';
+      return;
+    }
+    
     const threads = await threadsRes.json();
     const state = await stateRes.json();
 

@@ -243,7 +243,6 @@ export default {
                updated_at = ?11
            WHERE thread_id = ?12`
         ).bind(
-          drift.drift_vector.hex_delta, // set current hex to delta or simple target
           drift.drift_vector.direction,
           JSON.stringify(categoryHistory),
           driftVelocity,

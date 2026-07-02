@@ -458,6 +458,14 @@ export class POG2WebSocketDO extends DurableObject<Env> {
   // ─── Session / Thread Management ────────────────────────────────
 
   private async getOrCreateThread(sessionId: string): Promise<string> {
+    // KV dedup first - prevents duplicate thread creation storm
+    const kvKey = `thread:by_session:${sessionId}`;
+    let threadId = await this.env.POG2_SOVEREIGN.get(kvKey);
+    
+    if (threadId) {
+      return threadId;
+    }
+
     // Check existing thread registry
     const existing = await this.env.POG2_BOUNDARY.prepare(
       `SELECT thread_id FROM thread_registry WHERE session_id = ?1 AND status = 'active'
@@ -465,6 +473,8 @@ export class POG2WebSocketDO extends DurableObject<Env> {
     ).bind(sessionId).first<{ thread_id: string }>();
 
     if (existing) {
+      // Cache for future
+      await this.env.POG2_SOVEREIGN.put(kvKey, existing.thread_id);
       return existing.thread_id;
     }
 
@@ -478,16 +488,18 @@ export class POG2WebSocketDO extends DurableObject<Env> {
         body: JSON.stringify({ session_id: sessionId, resume: true }),
       }));
       const result = await response.json() as { thread_id: string };
+      await this.env.POG2_SOVEREIGN.put(kvKey, result.thread_id);
       return result.thread_id;
     } catch (e) {
       console.error('Orchestrator DO unreachable, creating local thread:', e);
       // Fallback: create thread directly
-      const threadId = crypto.randomUUID();
+      threadId = crypto.randomUUID();
       const now = Date.now();
       await this.env.POG2_BOUNDARY.prepare(
         `INSERT INTO thread_registry (thread_id, session_id, current_hex, continuity_score, status, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
       ).bind(threadId, sessionId, 1, 1.0, 'active', now, now).run();
+      await this.env.POG2_SOVEREIGN.put(kvKey, threadId);
       return threadId;
     }
   }

@@ -59,15 +59,23 @@ await this.ctx.storage.setAlarm(Date.now() + 640);
 
     // Admin: get thread registry
     if (url.pathname === '/admin/threads' && request.method === 'GET') {
-      const threads = await this.env.POG2_BOUNDARY.prepare(
-        `SELECT thread_id, session_id, current_hex, continuity_score, status, updated_at
-         FROM thread_registry
-         ORDER BY updated_at DESC
-         LIMIT 100`
-      ).all();
-      return new Response(JSON.stringify(threads.results), {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      try {
+        const threads = await this.env.POG2_BOUNDARY.prepare(
+          `SELECT * FROM thread_registry ORDER BY updated_at DESC LIMIT 20`
+        ).all();
+        return new Response(JSON.stringify({ threads: threads.results, error: null }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ 
+          error: "D1_TIMEOUT", 
+          retry_after: 5000,
+          threads: [] 
+        }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Admin: get system state

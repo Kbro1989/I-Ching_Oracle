@@ -1,6 +1,6 @@
 -- Schema for POG2 Boundary D1 Database
--- Aligned with SovereignStorageSchema_Spec.txt, TemporalDriftEngine_Spec.txt,
--- OracleContinuityLayer_Spec.txt, OraclePersonaEngine_Spec.txt
+-- Aligned with SovereignStorageSchema_Spec.md, TemporalDriftEngine_Spec.md,
+-- OracleContinuityLayer_Spec.md, OraclePersonaEngine_Spec.md
 
 -- identity_threads: Thread lifecycle state (Boundary tier, versioned)
 CREATE TABLE IF NOT EXISTS identity_threads (
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS thread_registry (
 );
 
 -- attractor_drift_analysis: Long-term drift metrics (Boundary tier)
--- Per TemporalDriftEngine_Spec.txt
+-- Per TemporalDriftEngine_Spec.md
 CREATE TABLE IF NOT EXISTS attractor_drift_analysis (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS attractor_drift_analysis (
 );
 
 -- evolution_log: Persona evolution milestones (Boundary tier)
--- Per OraclePersonaEngine_Spec.txt
+-- Per OraclePersonaEngine_Spec.md
 CREATE TABLE IF NOT EXISTS evolution_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   thread_id TEXT NOT NULL,
