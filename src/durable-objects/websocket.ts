@@ -117,6 +117,13 @@ export class POG2WebSocketDO extends DurableObject<Env> {
   // ─── WebSocket Handling ─────────────────────────────────────────
 
   private async handleWebSocket(request: Request): Promise<Response> {
+    console.log(JSON.stringify({
+      event: "WS_UPGRADE_START",
+      sessionId: "new",
+      url: request.url,
+      hasThreadId: false,
+    }));
+
     const [client, server] = Object.values(new WebSocketPair()) as [WebSocket, WebSocket];
 
     // Parse session from cookie or generate new
@@ -150,13 +157,28 @@ export class POG2WebSocketDO extends DurableObject<Env> {
     server.send(JSON.stringify(sessionMsg));
 
     // Set session cookie
-    const response = new Response(null, {
-      status: 101,
-      webSocket: client,
-      headers: {
-        'Set-Cookie': `session_id=${sessionId}; Path=/; HttpOnly; SameSite=Strict`,
-      },
-    });
+    let response: Response;
+    try {
+      response = new Response(null, {
+        status: 101,
+        webSocket: client,
+        headers: {
+          'Set-Cookie': `session_id=${sessionId}; Path=/; HttpOnly; SameSite=Strict`,
+        },
+      });
+    } catch (upgradeErr) {
+      console.error('WebSocket upgrade failed:', upgradeErr);
+      response = new Response(JSON.stringify({ error: 'UPGRADE_FAILED' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+      console.log(JSON.stringify({
+        event: "WS_UPGRADE_FAILED",
+        sessionId,
+        threadId,
+      }));
+      return response;
+    }
 
     // Start heartbeat if first connection
     if (this.connections.size === 1) {
@@ -188,6 +210,12 @@ export class POG2WebSocketDO extends DurableObject<Env> {
         this.stopHeartbeat();
       }
     });
+
+    console.log(JSON.stringify({
+      event: "WS_UPGRADE_OK",
+      sessionId,
+      threadId,
+    }));
 
     return response;
   }
@@ -461,7 +489,7 @@ export class POG2WebSocketDO extends DurableObject<Env> {
     // KV dedup first - prevents duplicate thread creation storm
     const kvKey = `thread:by_session:${sessionId}`;
     let threadId = await this.env.POG2_SOVEREIGN.get(kvKey);
-    
+
     if (threadId) {
       return threadId;
     }
@@ -478,25 +506,42 @@ export class POG2WebSocketDO extends DurableObject<Env> {
     }
 
     if (existing) {
-      // Cache for future
-      await this.env.POG2_SOVEREIGN.put(kvKey, existing.thread_id);
+      // Cache for future with guarded write
+      try {
+        await this.env.POG2_SOVEREIGN.put(kvKey, existing.thread_id);
+      } catch (kvErr) {
+        console.error('KV put failed:', kvErr);
+      }
       return existing.thread_id;
     }
 
-    // Try bridge resume via Orchestrator DO
+    // Try bridge resume via Orchestrator DO with bounded timeout
     const orchId = this.env.POG2_ORCHESTRATOR.idFromName('main');
     const orchStub = this.env.POG2_ORCHESTRATOR.get(orchId);
+    let orchThreadId: string | null = null;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
     try {
       const response = await orchStub.fetch(new Request('http://internal/thread/get-or-create', {
         method: 'POST',
         body: JSON.stringify({ session_id: sessionId, resume: true }),
+        signal: controller.signal,
       }));
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`Orchestrator returned ${response.status}`);
+      }
+
       const result = await response.json() as { thread_id: string };
-      await this.env.POG2_SOVEREIGN.put(kvKey, result.thread_id);
-      return result.thread_id;
+      orchThreadId = result.thread_id;
     } catch (e) {
+      clearTimeout(timeout);
       console.error('Orchestrator DO unreachable, creating local thread:', e);
+    }
+
+    if (!orchThreadId) {
       // Fallback: create thread directly
       threadId = crypto.randomUUID();
       const now = Date.now();
@@ -508,13 +553,20 @@ export class POG2WebSocketDO extends DurableObject<Env> {
       } catch (d1Error) {
         console.error('Local thread fallback D1 write failed:', d1Error);
       }
-      await this.env.POG2_SOVEREIGN.put(kvKey, threadId);
-      return threadId;
+    } else {
+      try {
+        await this.env.POG2_SOVEREIGN.put(kvKey, orchThreadId);
+      } catch (kvErr) {
+        console.error('KV put failed:', kvErr);
+      }
+      threadId = orchThreadId;
     }
+
+    return threadId;
   }
 
   private parseCookie(cookieHeader: string, name: string): string | null {
-    const match = cookieHeader.match(new RegExp(`(?:^|;\s*)${name}=([^;]+)`));
+    const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
     return match ? match[1] : null;
   }
 }
