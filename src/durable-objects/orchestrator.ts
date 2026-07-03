@@ -46,8 +46,8 @@ export class POG2OrchestratorDO extends DurableObject<Env> {
 
       const existingAlarm = await this.ctx.storage.getAlarm();
       if (existingAlarm === null) {
-        // Canonical boundary: ensure DO uses wall-clock schedule.
-await this.ctx.storage.setAlarm(Date.now() + 640);
+        // Canonical boundary: use tick-derived absolute time so alarm survives DO restart.
+        await this.ctx.storage.setAlarm(this.tick * 640 + 640);
       }
     });
   }
@@ -344,9 +344,15 @@ await this.ctx.storage.setAlarm(Date.now() + 640);
     }
 
     // Birth new thread
-    const threadId = crypto.randomUUID();
+    const threadId = await this.deriveThreadId(sessionId);
     await this.registerThread(threadId, sessionId, 1); // Default to Qian
     return threadId;
+  }
+
+  private async deriveThreadId(sessionId: string): Promise<string> {
+    const seed = `${sessionId}:${this.tick}:thread`;
+    const hash = await this.sha256(seed);
+    return hash.slice(0, 32);
   }
 
   // ─── Crisis Coordination ────────────────────────────────────────
