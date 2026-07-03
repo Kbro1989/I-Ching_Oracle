@@ -467,10 +467,15 @@ export class POG2WebSocketDO extends DurableObject<Env> {
     }
 
     // Check existing thread registry
-    const existing = await this.env.POG2_BOUNDARY.prepare(
-      `SELECT thread_id FROM thread_registry WHERE session_id = ?1 AND status = 'active'
-       ORDER BY updated_at DESC LIMIT 1`
-    ).bind(sessionId).first<{ thread_id: string }>();
+    let existing: { thread_id: string } | undefined;
+    try {
+      existing = await this.env.POG2_BOUNDARY.prepare(
+        `SELECT thread_id FROM thread_registry WHERE session_id = ?1 AND status = 'active'
+         ORDER BY updated_at DESC LIMIT 1`
+      ).bind(sessionId).first<{ thread_id: string }>();
+    } catch (e) {
+      console.error('Thread registry lookup failed:', e);
+    }
 
     if (existing) {
       // Cache for future
@@ -495,10 +500,14 @@ export class POG2WebSocketDO extends DurableObject<Env> {
       // Fallback: create thread directly
       threadId = crypto.randomUUID();
       const now = Date.now();
-      await this.env.POG2_BOUNDARY.prepare(
-        `INSERT INTO thread_registry (thread_id, session_id, current_hex, continuity_score, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
-      ).bind(threadId, sessionId, 1, 1.0, 'active', now, now).run();
+      try {
+        await this.env.POG2_BOUNDARY.prepare(
+          `INSERT INTO thread_registry (thread_id, session_id, current_hex, continuity_score, status, created_at, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+        ).bind(threadId, sessionId, 1, 1.0, 'active', now, now).run();
+      } catch (d1Error) {
+        console.error('Local thread fallback D1 write failed:', d1Error);
+      }
       await this.env.POG2_SOVEREIGN.put(kvKey, threadId);
       return threadId;
     }

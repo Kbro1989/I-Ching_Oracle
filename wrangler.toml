@@ -97,11 +97,6 @@ queue = "pog2-persona-outputs"
 max_batch_size = 100
 max_batch_timeout = 1
 
-# ─── Cron Triggers ────────────────────────────────────────────────
-
-[triggers]
-crons = ["*/1 * * * *"]
-
 # ─── Environment Variables ──────────────────────────────────────
 
 [vars]

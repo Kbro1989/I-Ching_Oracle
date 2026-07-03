@@ -176,6 +176,15 @@ export default {
 
   // ─── Unified Queue Handler ────────────────────────────────────────
   async queue(batch: MessageBatch<any>, env: Env, ctx: ExecutionContext): Promise<void> {
+    // === QUEUE ROUTING PROBE ===
+    console.log(JSON.stringify({
+      event: "QUEUE_ROUTING",
+      queueName: batch.queue,
+      messageCount: batch.messages.length,
+      firstType: batch.messages[0]?.body?.type || "no_type"
+    }));
+    // =========================
+
     const tickMessages: Message<any>[] = [];
     const collapseMessages: Message<any>[] = [];
     const driftMessages: Message<any>[] = [];
