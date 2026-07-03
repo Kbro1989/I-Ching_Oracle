@@ -143,8 +143,8 @@ export class POG2OrchestratorDO extends DurableObject<Env> {
       await this.handleTick();
     }
 
-    // Schedule next alarm
-    await this.ctx.storage.setAlarm(Date.now() + 640);
+    // Schedule next alarm from tick-derived absolute time to avoid wall-clock drift
+    await this.ctx.storage.setAlarm(this.tick * 640 + 640);
   }
 
   private async handleTick(): Promise<void> {
