@@ -114,6 +114,188 @@ Object.entries(HEXAGRAMS).forEach(([id, [binary, , action]]) => {
   HEXAGRAM_ACTIONS[Number(id)] = action;
 });
 
+export interface OracleState {
+  tick: number;
+  sessionId: string | null;
+  hexagramId: number;
+  action: 'ASSERT' | 'YIELD' | 'ADAPT' | 'WAIT';
+  category: 'sovereign' | 'boundary' | 'transformer' | 'dissipator';
+  emotionalWeight: number;
+  emotion: number;
+  timestamp: number;
+  temporalContext: 'past' | 'present' | 'future';
+  position: number | null;
+  gateLines: {
+    position: number;
+    ternary: 0 | 1 | 2;
+    darkness: number;
+    weight: number;
+  }[];
+  voidDropperPos: number | null;
+  l4Unlocked: boolean;
+  fidelity: number;
+  phaseMultiplier: number;
+  continuityScore: number;
+  driftVelocity: number;
+}
+
+export function serializeOracleState(state: OracleState): string {
+  const payload = [
+    state.tick,
+    state.sessionId ?? '',
+    state.hexagramId,
+    state.emotionalWeight,
+    state.emotion,
+    state.timestamp,
+    state.temporalContext,
+    state.position ?? -1,
+    state.voidDropperPos ?? -1,
+    state.l4Unlocked ? 1 : 0,
+    state.fidelity,
+    state.phaseMultiplier,
+    state.continuityScore,
+    state.driftVelocity,
+    state.category,
+    state.action,
+  ];
+
+  const gateLineIndicator = state.gateLines.reduce<string>((acc, line, index) => {
+    const p = String(index + 1);
+    const t = String(line.ternary);
+    const d = String(Math.round(line.darkness * 255));
+    const w = String(line.weight);
+    return `${acc}${p}${t}${d}${w}`;
+  }, '');
+
+  const meta = `${state.voidDropperPos ?? '0'}|${state.l4Unlocked ? '1' : '0'}|${gateLineIndicator || '0'}`;
+  return `${JSON.stringify(payload)}:::${meta}`;
+}
+
+export function hydrateOracleState(raw: string): OracleState | null {
+  try {
+    const [payloadStr, meta] = raw.split(':::');
+    const payload = JSON.parse(payloadStr) as number[];
+    if (!Array.isArray(payload) || payload.length < 16) return null;
+
+    const [
+      tick,
+      sessionId,
+      hexagramId,
+      emotionalWeight,
+      emotion,
+      timestamp,
+      temporalContext,
+      position,
+      voidDropperPos,
+      l4Unlocked,
+      fidelity,
+      phaseMultiplier,
+      continuityScore,
+      driftVelocity,
+      category,
+      action,
+    ] = payload;
+
+    const [vdPosRaw, l4Raw, gateLineIndicator] = meta.split('|');
+
+    const gateLines = parseGateLineIndicator(gateLineIndicator);
+    const voidDropperPosResolved = vdPosRaw === '0' ? null : Number(vdPosRaw);
+
+    return {
+      tick: Number(tick),
+      sessionId: sessionId ? String(sessionId) : null,
+      hexagramId: Number(hexagramId),
+      emotionalWeight: Number(emotionalWeight),
+      emotion: Number(emotion),
+      timestamp: Number(timestamp),
+      temporalContext: ['past', 'present', 'future'].includes(String(temporalContext))
+        ? (String(temporalContext) as OracleState['temporalContext'])
+        : 'present',
+      position: Number(position) > 0 ? Number(position) : null,
+      gateLines,
+      voidDropperPos: voidDropperPosResolved,
+      l4Unlocked: String(l4Unlocked) === '1',
+      fidelity: Number(fidelity),
+      phaseMultiplier: Number(phaseMultiplier),
+      continuityScore: Number(continuityScore),
+      driftVelocity: Number(driftVelocity),
+      category: ['sovereign', 'boundary', 'transformer', 'dissipator'].includes(String(category))
+        ? (String(category) as OracleState['category'])
+        : 'transformer',
+      action: ['ASSERT', 'YIELD', 'ADAPT', 'WAIT'].includes(String(action))
+        ? (String(action) as OracleState['action'])
+        : 'ADAPT',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function parseGateLineIndicator(indicator: string): OracleState['gateLines'] {
+  if (!indicator || indicator === '0') return [];
+
+  const lines: OracleState['gateLines'] = [];
+  const chunkSize = 4;
+  for (let i = 0; i < indicator.length; i += chunkSize) {
+    const chunk = indicator.slice(i, i + chunkSize);
+    if (chunk.length < chunkSize) break;
+
+    const pos = Number(chunk[0]);
+    const ternary = Number(chunk[1]) as 0 | 1 | 2;
+    const darkness = Number(chunk.slice(2, 4)) / 255;
+
+    if (pos >= 1 && pos <= 6 && [0, 1, 2].includes(ternary)) {
+      lines.push({ position: pos, ternary, darkness, weight: Math.round(darkness * 255) });
+    }
+  }
+
+  return lines.slice(0, 6);
+}
+
+export function collapseOracleStateToDecision(state: OracleState): {
+  hexagramId: number;
+  action: OracleState['action'];
+  category: OracleState['category'];
+} {
+  if (state.l4Unlocked && state.voidDropperPos !== null) {
+    return {
+      hexagramId: state.hexagramId,
+      action: state.action,
+      category: state.category,
+    };
+  }
+
+  if (state.emotionalWeight > 0.8 && state.continuityScore >= 0.7) {
+    return {
+      hexagramId: 1,
+      action: 'ASSERT',
+      category: 'boundary',
+    };
+  }
+
+  if (state.driftVelocity > 0.5) {
+    return {
+      hexagramId: 40,
+      action: 'ADAPT',
+      category: 'transformer',
+    };
+  }
+
+  if (state.continuityScore < 0.5) {
+    return {
+      hexagramId: 12,
+      action: 'WAIT',
+      category: 'dissipator',
+    };
+  }
+
+  return {
+    hexagramId: state.hexagramId,
+    action: state.action,
+    category: state.category,
+  };
+}
+
 const SOVEREIGN_CORES = new Set([7, 10, 16, 18, 19, 53, 56, 57, 61, 62]);
 const BOUNDARY_ATTRACTORS = new Set([1, 25, 26, 30, 38, 41, 49]);
 
@@ -161,6 +343,7 @@ class WeaveEngine {
   private previousEntropy: number = 0.999;
   private persistenceCountdown: number = 0;
   private lockedHex: number | null = null;
+  private boundSessionId: string | null = null;
 
   constructor(
     private readonly beatMs: number = 640,
@@ -168,6 +351,19 @@ class WeaveEngine {
     private readonly attractorPersistence: number = 5,
     private readonly voidReentryDepth: number = 5,
   ) {}
+
+  private async sha256Digest(input: string): Promise<ArrayBuffer> {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  }
+
+  private async deterministicPick(candidates: number[], selectorName: string): Promise<number> {
+    const sessionId = this.boundSessionId ?? 'null';
+    const seed = `${this.history.length}:${sessionId}:${this.previousHex}:${selectorName}`;
+    const hash = await this.sha256Digest(seed);
+    const view = new DataView(hash);
+    const uint32 = view.getUint32(0);
+    return candidates[uint32 % candidates.length];
+  }
 
   /**
    * Main processing loop — runs one complete weave cycle
@@ -316,34 +512,40 @@ class WeaveEngine {
     return this.buildCollapseEvent(selectedHex, governor, tick, sessionId, voidEntropy);
   }
 
+  private deterministicSelect(candidates: number[], selectorName: string): number {
+    const seed = `${this.history.length}:${this.previousHex}:${selectorName}`;
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+    }
+    return candidates[Math.abs(hash) % candidates.length];
+  }
+
   private selectSovereignCore(): number {
     const cores = Array.from(SOVEREIGN_CORES);
-    // Prefer cores with history, else random
     const historyMatch = cores.find(c => this.history.includes(c));
-    return historyMatch || cores[Math.floor(Math.random() * cores.length)];
+    return historyMatch ?? this.deterministicSelect(cores, 'sovereign');
   }
 
   private selectBoundaryAttractor(): number {
     const boundaries = Array.from(BOUNDARY_ATTRACTORS);
     const historyMatch = boundaries.find(b => this.history.includes(b));
-    return historyMatch || boundaries[Math.floor(Math.random() * boundaries.length)];
+    return historyMatch ?? this.deterministicSelect(boundaries, 'boundary');
   }
 
   private selectTransformer(): number {
-    // Any non-sovereign, non-boundary hexagram
     const candidates: number[] = [];
     for (let i = 1; i <= 64; i++) {
       if (!SOVEREIGN_CORES.has(i) && !BOUNDARY_ATTRACTORS.has(i)) {
         candidates.push(i);
       }
     }
-    return candidates[Math.floor(Math.random() * candidates.length)];
+    return this.deterministicSelect(candidates, 'transformer');
   }
 
   private selectDissipator(): number {
-    // Prefer forbidden-adjacent for dissipators
     const diss = Array.from(FORBIDDEN_ADJACENT);
-    return diss[Math.floor(Math.random() * diss.length)];
+    return this.deterministicSelect(diss, 'dissipator');
   }
 
   private buildCollapseEvent(

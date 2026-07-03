@@ -8,6 +8,12 @@
  */
 
 import type { Env } from '../index';
+import {
+  OracleState,
+  serializeOracleState,
+  hydrateOracleState,
+  collapseOracleStateToDecision,
+} from '../workers/weave';
 
 // ─── Message Types ─────────────────────────────────────────────────
 
@@ -479,6 +485,7 @@ export default {
       const body = await request.json() as {
         text: string;
         session_id?: string;
+        state_str?: string;
       };
 
       const engine = new PersonaEngine();
@@ -609,8 +616,13 @@ JSON Schema:
         console.warn('Failed to update thread state in D1:', dbErr);
       }
 
+      const fallbackTemporal = 'present' as const;
+      const resolvedTemporal: 'past' | 'present' | 'future' = ['past', 'present', 'future'].includes(String(aiResult.temporal_context))
+        ? (String(aiResult.temporal_context) as 'past' | 'present' | 'future')
+        : fallbackTemporal;
+
       // Process query for gate lines display (e.g. card scanner pattern)
-      const query = await engine.processQuery(body.text, aiResult.temporal_context);
+      const query = await engine.processQuery(body.text, resolvedTemporal);
 
       const baseMode = engine.selectBaseMode(continuityScore, resolvedMode);
       const modulation = engine.applyModulation(
@@ -618,16 +630,53 @@ JSON Schema:
       );
       const cadence = engine.calculateCadence(baseMode, modulation, false, aiResult.emotional_weight > 0.8, null);
 
-      // Layer activation rules based on thread stability
-      const isBoundaryActive = continuityScore < 0.9;
-      const isTransformerActive = aiResult.emotional_weight < 0.3 || driftVelocity > 0.3;
-      const isDissipatorActive = coherenceIndex < 0.5 || query.l4_unlocked;
+      const gateLines = [...query.gate_lines].sort((a, b) => b.darkness - a.darkness);
+      const compiledOracleState = {
+        tick: this.resolveTick(),
+        sessionId,
+        hexagramId: resolvedHex,
+        action: resolvedAction,
+        category: resolvedMode,
+        emotionalWeight: aiResult.emotional_weight,
+        emotion: query.emotion ?? aiResult.emotional_weight,
+        timestamp: Date.now(),
+        temporalContext: aiResult.temporal_context,
+        position: gateLines[0]?.position ?? null,
+        gateLines,
+        voidDropperPos: query.void_dropper_pos,
+        l4Unlocked: query.l4_unlocked,
+        fidelity: 1.0,
+        phaseMultiplier: 1.0,
+        continuityScore,
+        driftVelocity,
+      };
+
+      const stateStr = body.state_str
+        ? String(body.state_str).trim()
+        : serializeOracleState(compiledOracleState as any);
+
+      const hydratedState = body.state_str
+        ? hydrateOracleState(stateStr) ?? compiledOracleState
+        : compiledOracleState;
+
+      const collapsedDecision = collapseOracleStateToDecision(hydratedState as any);
+      const collapsedHex = collapsedDecision.hexagramId;
+      const collapsedAction = collapsedDecision.action;
+      const collapsedCategory = collapsedDecision.category;
 
       const layers = {
-        sovereign: aiResult.sovereign,
-        boundary: isBoundaryActive ? aiResult.boundary : "",
-        transformer: isTransformerActive ? aiResult.transformer : "",
-        dissipator: isDissipatorActive ? (aiResult.dissipator || []) : []
+        sovereign: buildLayerText(collapsedHex, collapsedAction, 'sovereign'),
+        boundary: continuityScore < 0.9 ? buildLayerText(collapsedHex, collapsedAction, 'boundary') : '',
+        transformer: (aiResult.emotional_weight < 0.3 || driftVelocity > 0.3)
+          ? buildLayerText(collapsedHex, collapsedAction, 'transformer')
+          : '',
+        dissipator: coherenceIndex < 0.5 || query.l4_unlocked
+          ? [
+              `...${collapsedAction.toLowerCase()}...`,
+              `The oracle... fragments... ${collapsedAction}... piece...`,
+              `...${HEXAGRAM_NAMES[collapsedHex] || `Hexagram #${collapsedHex}`}... dissolves...`,
+            ]
+          : [],
       };
 
       return new Response(JSON.stringify({
@@ -637,13 +686,14 @@ JSON Schema:
         cadence_ms: cadence,
         persona_mode: baseMode,
         continuity_score: continuityScore,
-        gate_lines: [...query.gate_lines].sort((a, b) => b.darkness - a.darkness),
+        gate_lines: gateLines,
         void_dropper_pos: query.void_dropper_pos,
         l4_unlocked: query.l4_unlocked,
         emotional_weight: aiResult.emotional_weight,
-        collapsed_hexagram: resolvedHex,
-        hexagram_name: HEXAGRAM_NAMES[resolvedHex] || `Hexagram #${resolvedHex}`,
-        hexagram_action: resolvedAction,
+        collapsed_hexagram: collapsedHex,
+        state_str: stateStr,
+        hexagram_name: HEXAGRAM_NAMES[collapsedHex] || `Hexagram #${collapsedHex}`,
+        hexagram_action: collapsedAction,
         temporal_context: aiResult.temporal_context,
         past_reflection: aiResult.past_reflection,
         present_reflection: aiResult.present_reflection,
@@ -667,6 +717,18 @@ JSON Schema:
 } satisfies ExportedHandler<Env, ContinuityEvent>;
 
 // ─── Helpers ───────────────────────────────────────────────────────
+
+function buildLayerText(
+  hexId: number,
+  action: string,
+  layer: 'sovereign' | 'boundary' | 'transformer' | 'dissipator',
+): string {
+  const name = HEXAGRAM_NAMES[hexId] || `Hexagram #${hexId}`;
+  if (layer === 'sovereign') return `The oracle declares: ${action}. The substrate holds through ${name}.`;
+  if (layer === 'boundary') return `The oracle asserts ${action}... for now. The edge trembles.`;
+  if (layer === 'transformer') return `The oracle becomes ${action.toLowerCase()}: '${action}' is now the shape of ${name}.`;
+  return '';
+}
 
 function selectHexForMode(mode: string): number {
   switch (mode) {
