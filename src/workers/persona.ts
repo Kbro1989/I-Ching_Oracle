@@ -632,7 +632,7 @@ JSON Schema:
 
       const gateLines = [...query.gate_lines].sort((a, b) => b.darkness - a.darkness);
       const compiledOracleState = {
-        tick: this.resolveTick(),
+        tick: thread?.last_active_tick ?? 0,
         sessionId,
         hexagramId: resolvedHex,
         action: resolvedAction,
