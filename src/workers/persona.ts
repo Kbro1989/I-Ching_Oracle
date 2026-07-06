@@ -482,44 +482,50 @@ export default {
 
     // Human-Oracle Interface: /oracle/consult
     if (url.pathname === '/oracle/consult' && request.method === 'POST') {
-      const body = await request.json() as {
-        text: string;
-        session_id?: string;
-        state_str?: string;
-      };
+      let body: { text?: string; session_id?: string; state_str?: string };
+      try {
+        body = await request.json() as { text: string; session_id?: string; state_str?: string };
+      } catch (jsonErr) {
+        console.error('/oracle/consult bad json:', jsonErr);
+        return new Response(JSON.stringify({ error: 'BAD_JSON', message: String(jsonErr) }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
 
-      const engine = new PersonaEngine();
+      try {
+        const engine = new PersonaEngine();
 
-      // Get thread state from D1
-      const sessionId = body.session_id || crypto.randomUUID();
-      const thread = await env.POG2_BOUNDARY.prepare(
-        `SELECT * FROM identity_threads WHERE thread_id = ?1`
-      ).bind(sessionId).first<{
-        current_hex: number;
-        stability_score: number;
-        coherence_index: number;
-        drift_velocity: number;
-      }>();
+        // Get thread state from D1
+        const sessionId = body.session_id || crypto.randomUUID();
+        const thread = await env.POG2_BOUNDARY.prepare(
+          `SELECT * FROM identity_threads WHERE thread_id = ?1`
+        ).bind(sessionId).first<{
+          current_hex: number;
+          stability_score: number;
+          coherence_index: number;
+          drift_velocity: number;
+        }>();
 
-      const continuityScore = thread?.stability_score || 0.7;
-      const coherenceIndex = thread?.coherence_index || 0.7;
-      const driftVelocity = thread?.drift_velocity || 0.1;
-      const currentHex = thread?.current_hex || 1;
+        const continuityScore = thread?.stability_score || 0.7;
+        const coherenceIndex = thread?.coherence_index || 0.7;
+        const driftVelocity = thread?.drift_velocity || 0.1;
+        const currentHex = thread?.current_hex || 1;
 
-      // Define default fallback result
-      let aiResult = {
-        emotional_weight: Math.min(1.0, body.text.split(/\s+/).length / 10 + (body.text.includes('!') ? 0.3 : 0)),
-        collapsed_hexagram: (Math.abs(body.text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 64) + 1,
-        temporal_context: ('present' as 'past' | 'present' | 'future'),
-        past_reflection: "In times past, your question took root in silence, waiting for resonance.",
-        present_reflection: "Now, the query creates a ripple across the current threshold, seeking collapse.",
-        future_reflection: "Ahead, the pattern dissolves into clarity once the transition is complete.",
-        sovereign: `The oracle declares: The state of the substrate holds.`,
-        boundary: `The edge trembles slightly... but the system persists for now.`,
-        transformer: `The oracle adapts and shifts to accommodate the shape of the query.`,
-        dissipator: ["...the pattern...", "...dissolves...", "...into void..."],
-        answer: "A default vibration settles the query. The oracle waits."
-      };
+        // Define default fallback result
+        let aiResult = {
+          emotional_weight: Math.min(1.0, body.text.split(/\s+/).length / 10 + (body.text.includes('!') ? 0.3 : 0)),
+          collapsed_hexagram: (Math.abs(body.text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)) % 64) + 1,
+          temporal_context: ('present' as 'past' | 'present' | 'future'),
+          past_reflection: "In times past, your question took root in silence, waiting for resonance.",
+          present_reflection: "Now, the query creates a ripple across the current threshold, seeking collapse.",
+          future_reflection: "Ahead, the pattern dissolves into clarity once the transition is complete.",
+          sovereign: `The oracle declares: The state of the substrate holds.`,
+          boundary: `The edge trembles slightly... but the system persists for now.`,
+          transformer: `The oracle adapts and shifts to accommodate the shape of the query.`,
+          dissipator: ["...the pattern...", "...dissolves...", "...into void..."],
+          answer: "A default vibration settles the query. The oracle waits."
+        };
 
       if (env.AI) {
         try {
