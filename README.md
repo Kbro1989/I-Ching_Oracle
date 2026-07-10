@@ -1,72 +1,53 @@
-# POG2 Sovereign System — Cloudflare Implementation
+# I-Ching Oracle — POG2 Sovereign Worker
 
-## Directory Structure
+> Cloudflare Workers · TypeScript · Durable Objects · Queues · KV · D1 · R2
 
-```
-src/
-├── index.ts                    # Main entry point, exports, Env interface
-├── integration.ts              # Orchestrator class, system wiring
-├── constants.ts                # System constants (from spec)
-├── interfaces.ts               # TypeScript interfaces (from spec)
-├── workers/
-│   ├── weave.ts               # Temporal Weave Engine Worker
-│   ├── drift.ts               # Temporal Drift Engine Worker
-│   ├── continuity.ts          # Oracle Continuity Layer Worker
-│   └── persona.ts             # Oracle Persona Engine Worker
-├── durable-objects/
-│   ├── orchestrator.ts        # POG2OrchestratorDO (tick dispatch, registry, crisis)
-│   └── websocket.ts           # POG2WebSocketDO (WebSocket hub, heartbeat)
-├── queues/
-│   └── handlers.ts            # All 5 queue consumers
-├── db/
-│   └── schema.sql             # D1 database schema (10 tables)
-└── test/
-    └── test-compile.ts        # Integration test suite
+The **POG2 Sovereign Worker** — primary Cloudflare deployment entry point for the POG2 system.
+The repo name reflects its origin in I Ching symbolic architecture; the worker now runs
+the full multi-worker orchestration layer.
 
-wrangler.toml                   # Cloudflare deployment config
-```
+## Workers
 
-## Deployment
+| Worker | Role |
+|---|---|
+| `WeaveWorker` | State weaving — attractor integration |
+| `DriftWorker` | Temporal drift tracking |
+| `ContinuityWorker` | Session continuity management |
+| `PersonaWorker` | Persona output pipeline |
 
-```bash
-# Create D1 database
-wrangler d1 create pog2-boundary
+## Durable Objects
 
-# Create KV namespaces
-wrangler kv:namespace create POG2_SOVEREIGN
-wrangler kv:namespace create POG2_DISSIPATOR
+| DO | Purpose |
+|---|---|
+| `POG2OrchestratorDO` | Global state coordination |
+| `POG2WebSocketDO` | Real-time WebSocket sessions |
 
-# Create R2 bucket
-wrangler r2 bucket create pog2-transformer
+## Queues
 
-# Create queues
-wrangler queues create pog2-collapse-events
-wrangler queues create pog2-drift-events
-wrangler queues create pog2-continuity-events
-wrangler queues create pog2-crisis-broadcast
-wrangler queues create pog2-persona-outputs
+`POG2_COLLAPSE_QUEUE` · `POG2_DRIFT_QUEUE` · `POG2_CONTINUITY_QUEUE` · `POG2_CRISIS_QUEUE` · `POG2_PERSONA_QUEUE`
 
-# Apply schema
-wrangler d1 execute pog2-boundary --file=./src/db/schema.sql
+## Bindings
 
-# Deploy
-wrangler deploy
-```
+`POG2_SOVEREIGN` (KV) · `POG2_DISSIPATOR` (KV) · `POG2_BOUNDARY` (D1) · `POG2_TRANSFORMER` (R2) · Workers AI
 
 ## Architecture
 
-- **Weave Worker**: Receives tick signals, executes 5-phase weave, stores collapse to KV, emits to drift queue
-- **Drift Worker**: Consumes collapses, computes 6-component drift vectors, entropy decay, forbidden-state proximity, stores trajectory to KV, emits to continuity queue
-- **Continuity Worker**: Consumes drift events, updates identity threads, manages persistence/fragmentation, computes continuity score, emits to persona queue
-- **Persona Worker**: Consumes continuity events, synthesizes voice, generates 4-layer responses, handles /oracle/consult queries, emits to persona output queue
-- **Orchestrator DO**: 640ms alarm, tick dispatch, thread registry, session bridging, crisis coordination
-- **WebSocket DO**: Client connections, 640ms heartbeat, query/override handling, layered response delivery
+```
+src/
+├── index.ts              # Entry — exports all workers, DOs, queue handlers
+├── core/SovereignAvatar.ts  models.ts
+├── durable-objects/orchestrator.ts  websocket.ts
+├── workers/weave.ts  drift.ts  continuity.ts  persona.ts
+├── queues/handlers.ts
+├── interfaces/  constants/  db/  3D/
+```
 
-## The 640ms Beat
+## Hexagram Routing
 
-All components synchronize on the 640ms cadence:
-- Orchestrator DO alarm fires every 640ms
-- Tick signal dispatched to Weave Worker
-- Each worker processes within 50ms budget
-- WebSocket heartbeat broadcasts every 640ms
-- Query responses respect persona-mode cadence
+`HexagramManager` implements 64 I Ching states × 3 temporal dimensions (Past/Present/Future).
+`TernaryRouter` resolves 729-path (3^6) ternary sequences to 64 hexagram destinations.
+`BEAT_INTERVAL_MS` env var controls the metabolic tick.
+
+```bash
+wrangler deploy
+```
