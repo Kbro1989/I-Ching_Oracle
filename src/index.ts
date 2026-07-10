@@ -37,6 +37,7 @@ import WeaveWorker from './workers/weave';
 import DriftWorker from './workers/drift';
 import ContinuityWorker from './workers/continuity';
 import PersonaWorker from './workers/persona';
+import { onCollapseEvent, onDriftEvent, onContinuityEvent, onCrisisEvent, onPersonaOutput } from './queues/handlers';
 export { default as WeaveWorker } from './workers/weave';
 export { default as DriftWorker } from './workers/drift';
 export { default as ContinuityWorker } from './workers/continuity';
